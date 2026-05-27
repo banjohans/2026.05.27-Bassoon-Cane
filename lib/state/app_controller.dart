@@ -508,7 +508,10 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _upsertGraph4CanonicalSubset() async {
-    final canonicalRows = _graph4Rows.take(20).toList();
+    final canonicalRows = _graph4Rows
+        .where((row) => _scoreFromGraphTag(row.ratingTag) != null)
+        .take(20)
+        .toList();
     final canonicalNames = canonicalRows
         .map((row) => 'G4-${row.name}')
         .toSet();

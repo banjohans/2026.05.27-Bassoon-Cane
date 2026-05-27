@@ -2600,8 +2600,6 @@ class _AddCanePageState extends State<AddCanePage> {
   final _lengthController = TextEditingController();
   final _widthController = TextEditingController();
   final _thicknessController = TextEditingController();
-  final _thicknessMiddleController = TextEditingController();
-  final _thicknessBackController = TextEditingController();
   final _massController = TextEditingController();
   final _flexibilityController = TextEditingController();
   final _loadController = TextEditingController(text: '200');
@@ -2639,12 +2637,6 @@ class _AddCanePageState extends State<AddCanePage> {
       _lengthController.text = sample.lengthMm.toStringAsFixed(2);
       _widthController.text = sample.widthMm.toStringAsFixed(2);
       _thicknessController.text = sample.thicknessMm.toStringAsFixed(3);
-      _thicknessMiddleController.text = sample.thicknessReadingsMm.length > 1
-          ? sample.thicknessReadingsMm[1].toStringAsFixed(3)
-          : sample.thicknessMm.toStringAsFixed(3);
-      _thicknessBackController.text = sample.thicknessReadingsMm.length > 2
-          ? sample.thicknessReadingsMm[2].toStringAsFixed(3)
-          : sample.thicknessMm.toStringAsFixed(3);
       _massController.text = sample.massG.toStringAsFixed(3);
       _flexibilityController.text = sample.flexibilityDeg.toStringAsFixed(2);
       _loadController.text = sample.loadG.toStringAsFixed(1);
@@ -2666,8 +2658,6 @@ class _AddCanePageState extends State<AddCanePage> {
     _lengthController.dispose();
     _widthController.dispose();
     _thicknessController.dispose();
-    _thicknessMiddleController.dispose();
-    _thicknessBackController.dispose();
     _massController.dispose();
     _flexibilityController.dispose();
     _loadController.dispose();
@@ -2762,39 +2752,11 @@ class _AddCanePageState extends State<AddCanePage> {
               },
             ),
             const SizedBox(height: 10),
-            _NumberInput(controller: _thicknessController, label: 'Thickness - outer (mm)', onChanged: (_) => setState(() {})),
+            _NumberInput(controller: _thicknessController, label: 'Thickness (mm)', onChanged: (_) => setState(() {})),
             _ValuePresetChips(
               values: controller.thicknessOuterHistory,
               onSelected: (value) {
                 _thicknessController.text = value.toStringAsFixed(3);
-                setState(() {});
-              },
-            ),
-            const SizedBox(height: 10),
-            _NumberInput(
-              controller: _thicknessMiddleController,
-              label: 'Thickness - middle (mm, optional)',
-              requiredField: false,
-              onChanged: (_) => setState(() {}),
-            ),
-            _ValuePresetChips(
-              values: controller.thicknessMiddleHistory,
-              onSelected: (value) {
-                _thicknessMiddleController.text = value.toStringAsFixed(3);
-                setState(() {});
-              },
-            ),
-            const SizedBox(height: 10),
-            _NumberInput(
-              controller: _thicknessBackController,
-              label: 'Thickness - inner/back (mm, optional)',
-              requiredField: false,
-              onChanged: (_) => setState(() {}),
-            ),
-            _ValuePresetChips(
-              values: controller.thicknessBackHistory,
-              onSelected: (value) {
-                _thicknessBackController.text = value.toStringAsFixed(3);
                 setState(() {});
               },
             ),
@@ -2977,8 +2939,6 @@ class _AddCanePageState extends State<AddCanePage> {
     final length = _tryParseNumber(_lengthController.text);
     final width = _tryParseNumber(_widthController.text);
     final thickness = _tryParseNumber(_thicknessController.text);
-    final thicknessMiddle = _tryParseNumber(_thicknessMiddleController.text);
-    final thicknessBack = _tryParseNumber(_thicknessBackController.text);
     final mass = _tryParseNumber(_massController.text);
     final flexibility = _tryParseNumber(_flexibilityController.text);
     final load = _tryParseNumber(_loadController.text);
@@ -2995,11 +2955,7 @@ class _AddCanePageState extends State<AddCanePage> {
 
     final massForPrediction = mass ?? controller.averageMassG ?? 0;
     final flexibilityForPrediction = flexibility ?? controller.averageFlexibilityDeg ?? 0;
-    final thicknessReadings = [
-      thickness!,
-      ?thicknessMiddle,
-      ?thicknessBack,
-    ];
+    final thicknessReadings = [thickness!];
 
     final purchaseDate = _parseDate(_batchController.text) ?? _purchaseDate;
 
@@ -3161,17 +3117,11 @@ class _AddCanePageState extends State<AddCanePage> {
     final lengthMm = _tryParseNumber(_lengthController.text)!;
     final widthMm = _tryParseNumber(_widthController.text)!;
     final thicknessMm = _tryParseNumber(_thicknessController.text)!;
-    final thicknessMiddleMm = _tryParseNumber(_thicknessMiddleController.text);
-    final thicknessBackMm = _tryParseNumber(_thicknessBackController.text);
     final massG = _tryParseNumber(_massController.text) ?? 0;
     final flexibilityDeg = _tryParseNumber(_flexibilityController.text) ?? 0;
     final loadG = _tryParseNumber(_loadController.text)!;
     final submergedLengthMm = _tryParseNumber(_submergedLengthController.text);
-    final thicknessReadingsMm = [
-      thicknessMm,
-      ?thicknessMiddleMm,
-      ?thicknessBackMm,
-    ];
+    final thicknessReadingsMm = [thicknessMm];
     final purchaseDate = _parseDate(_batchController.text) ?? _purchaseDate;
 
     if (_isEditing) {
