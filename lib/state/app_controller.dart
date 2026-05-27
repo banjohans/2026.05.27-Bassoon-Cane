@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -140,6 +142,75 @@ class AppController extends ChangeNotifier {
       return null;
     }
     return values.reduce((a, b) => a + b) / values.length;
+  }
+
+  String exportDatabaseJson({bool pretty = true}) {
+    final payload = {
+      'caneSamples': _caneSamples.map((sample) => sample.toJson()).toList(),
+      'reedEvaluations': _reedEvaluations
+          .map((evaluation) => evaluation.toJson())
+          .toList(),
+      'exportedAt': DateTime.now().toIso8601String(),
+    };
+    if (pretty) {
+      return const JsonEncoder.withIndent('  ').convert(payload);
+    }
+    return jsonEncode(payload);
+  }
+
+  Future<({int caneCount, int reedCount})> importDatabaseJson(
+    String jsonString, {
+    bool merge = false,
+  }) async {
+    final decoded = jsonDecode(jsonString);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('Invalid JSON format. Expected an object.');
+    }
+
+    final caneRaw =
+        (decoded['caneSamples'] ?? decoded['canes'] ?? const <dynamic>[])
+            as List<dynamic>;
+    final reedRaw =
+        (decoded['reedEvaluations'] ?? decoded['reeds'] ?? const <dynamic>[])
+            as List<dynamic>;
+
+    final importedCanes = caneRaw
+        .map((item) => CaneSample.fromJson(item as Map<String, dynamic>))
+        .toList();
+    final importedReeds = reedRaw
+        .map((item) => ReedEvaluation.fromJson(item as Map<String, dynamic>))
+        .toList();
+
+    if (merge) {
+      final caneById = {for (final sample in _caneSamples) sample.id: sample};
+      for (final sample in importedCanes) {
+        caneById[sample.id] = sample;
+      }
+      _caneSamples = caneById.values.toList();
+
+      final validCaneIds = _caneSamples.map((sample) => sample.id).toSet();
+      final reedById = {
+        for (final evaluation in _reedEvaluations)
+          if (validCaneIds.contains(evaluation.caneId)) evaluation.id: evaluation,
+      };
+      for (final evaluation in importedReeds) {
+        if (!validCaneIds.contains(evaluation.caneId)) {
+          continue;
+        }
+        reedById[evaluation.id] = evaluation;
+      }
+      _reedEvaluations = reedById.values.toList();
+    } else {
+      final validCaneIds = importedCanes.map((sample) => sample.id).toSet();
+      _caneSamples = importedCanes;
+      _reedEvaluations = importedReeds
+          .where((evaluation) => validCaneIds.contains(evaluation.caneId))
+          .toList();
+    }
+
+    await _persist();
+    notifyListeners();
+    return (caneCount: _caneSamples.length, reedCount: _reedEvaluations.length);
   }
 
   Future<void> initialize() async {

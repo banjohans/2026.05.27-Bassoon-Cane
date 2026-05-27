@@ -1,0 +1,44 @@
+{
+  "caneSamples": [
+    {
+      "id": "qa-cane-005",
+      "createdAt": "2026-05-24T09:00:00.000Z",
+      "sampleName": "QA-C1",
+      "purchaseDate": "2026-05-24T00:00:00.000Z",
+      "source": "QA Merge Batch",
+      "lengthMm": 120.0,
+      "widthMm": 14.0,
+      "thicknessMm": 3.0,
+      "thicknessReadingsMm": [3.0],
+      "innerGougeType": "none",
+      "massG": 0.71,
+      "flexibilityDeg": 21.2,
+      "loadG": 200.0,
+      "naturalFrequencyHz": 1196.3,
+      "submergedLengthMm": 97.0,
+      "density": null,
+      "hardness": 14.0,
+      "notes": "Merge-test cane",
+      "photoPaths": [],
+      "resonanceTakesHz": [1195.8, 1196.1, 1197.0]
+    }
+  ],
+  "reedEvaluations": [
+    {
+      "id": "qa-reed-005",
+      "caneId": "qa-cane-005",
+      "createdAt": "2026-05-24T18:00:00.000Z",
+      "response": 8,
+      "stability": 8,
+      "tone": 8,
+      "intonation": 8,
+      "flexibility": 8,
+      "projection": 8,
+      "resistance": 8,
+      "comment": "Merge-test reed",
+      "goldStandard": false,
+      "longevityDays": 12,
+      "photoPaths": []
+    }
+  ]
+}

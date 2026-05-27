@@ -1,7 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
-
-import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/cane.dart';
 import '../models/reed.dart';
@@ -17,19 +15,12 @@ class LocalDatabaseSnapshot {
 }
 
 class LocalStore {
-  Future<File> _dbFile() async {
-    final directory = await getApplicationDocumentsDirectory();
-    return File('${directory.path}/bassoon_cane_db.json');
-  }
+  static const String _dbKey = 'bassoon_cane_db_json';
 
   Future<LocalDatabaseSnapshot> load() async {
-    final file = await _dbFile();
-    if (!await file.exists()) {
-      return const LocalDatabaseSnapshot(caneSamples: [], reedEvaluations: []);
-    }
-
-    final content = await file.readAsString();
-    if (content.trim().isEmpty) {
+    final prefs = await SharedPreferences.getInstance();
+    final content = prefs.getString(_dbKey);
+    if (content == null || content.trim().isEmpty) {
       return const LocalDatabaseSnapshot(caneSamples: [], reedEvaluations: []);
     }
 
@@ -51,15 +42,15 @@ class LocalStore {
     required List<CaneSample> caneSamples,
     required List<ReedEvaluation> reedEvaluations,
   }) async {
-    final file = await _dbFile();
+    final prefs = await SharedPreferences.getInstance();
     final payload = {
       'caneSamples': caneSamples.map((item) => item.toJson()).toList(),
       'reedEvaluations': reedEvaluations.map((item) => item.toJson()).toList(),
       'updatedAt': DateTime.now().toIso8601String(),
     };
-    await file.writeAsString(
+    await prefs.setString(
+      _dbKey,
       const JsonEncoder.withIndent('  ').convert(payload),
-      flush: true,
     );
   }
 }

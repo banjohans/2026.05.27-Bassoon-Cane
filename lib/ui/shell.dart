@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
@@ -2027,6 +2030,23 @@ class _CaneTabState extends State<_CaneTab> {
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
             ),
             const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _importJsonData(context),
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('Import JSON'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _exportJsonData(context),
+                  icon: const Icon(Icons.download),
+                  label: const Text('Export JSON'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             _SectionCard(
               title: 'Filters',
               child: Column(
@@ -2321,6 +2341,23 @@ class _ReedTabState extends State<_ReedTab> {
             const Text(
               'Reed Outcome Tracking',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _importJsonData(context),
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('Import JSON'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _exportJsonData(context),
+                  icon: const Icon(Icons.download),
+                  label: const Text('Export JSON'),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             _SectionCard(
@@ -2763,7 +2800,7 @@ class _AddCanePageState extends State<AddCanePage> {
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               initialValue: _innerGougeType,
-              decoration: const InputDecoration(labelText: 'Inner gouge type'),
+              decoration: const InputDecoration(labelText: 'Gouge'),
               items: const [
                 DropdownMenuItem(value: 'excentric', child: Text('Excentric')),
                 DropdownMenuItem(value: 'concentric', child: Text('Concentric')),
@@ -4653,4 +4690,152 @@ int? _tryParseInt(String raw) {
     return null;
   }
   return int.tryParse(trimmed);
+}
+
+Future<void> _importJsonData(BuildContext context) async {
+  final mode = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text('Import Data'),
+        content: const Text(
+          'Choose how the JSON data should be applied.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Merge'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Replace all'),
+          ),
+        ],
+      );
+    },
+  );
+
+  if (mode == null || !context.mounted) {
+    return;
+  }
+
+  try {
+    final picked = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['json'],
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty || !context.mounted) {
+      return;
+    }
+
+    final file = picked.files.single;
+    final content = await _readPickedFileAsString(file);
+    if (content == null || !context.mounted) {
+      return;
+    }
+
+    final result = await context.read<AppController>().importDatabaseJson(
+      content,
+      merge: mode,
+    );
+    if (!context.mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Imported data: ${result.caneCount} canes, ${result.reedCount} reeds.',
+        ),
+      ),
+    );
+  } catch (error) {
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Import failed: $error')),
+    );
+  }
+}
+
+Future<void> _exportJsonData(BuildContext context) async {
+  final controller = context.read<AppController>();
+  final json = controller.exportDatabaseJson(pretty: true);
+  final timestamp = DateTime.now()
+      .toIso8601String()
+      .replaceAll(':', '-')
+      .replaceAll('.', '-');
+  final fileName = 'reedlab_export_$timestamp.json';
+
+  try {
+    final target = await FilePicker.saveFile(
+      dialogTitle: 'Export ReedLab data',
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: const ['json'],
+      bytes: Uint8List.fromList(utf8.encode(json)),
+    );
+
+    if (kIsWeb) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Export started in browser download flow.')),
+      );
+      return;
+    }
+
+    if (target == null || target.trim().isEmpty) {
+      return;
+    }
+
+    await File(target).writeAsString(json, flush: true);
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Exported data file: $target')),
+    );
+  } catch (error) {
+    if (!context.mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Export fallback'),
+          content: const Text(
+            'Could not open the file-save dialog. Data was copied to clipboard instead.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+    await Clipboard.setData(ClipboardData(text: json));
+  }
+}
+
+Future<String?> _readPickedFileAsString(PlatformFile file) async {
+  if (file.bytes != null) {
+    return utf8.decode(file.bytes!);
+  }
+  final path = file.path;
+  if (path == null || path.isEmpty) {
+    return null;
+  }
+  return File(path).readAsString();
 }
