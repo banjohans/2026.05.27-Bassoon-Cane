@@ -249,8 +249,8 @@ class _EmptyDashboardCta extends StatelessWidget {
         ? 'No data yet.'
         : 'No data from the ${range.longLabel}.';
     final body = isAll
-        ? 'Start tracking your cane and reed work to unlock averages, trends, and the predicted top performer profile.'
-        : 'Try a wider range above, or log a cane and a reed to populate this window.';
+      ? 'The home screen will automatically fill with useful stats, trends, and your top performer profile once you add cane and reed data.'
+      : 'This home screen view fills itself with useful stats once data exists in the selected range. Try a wider range above, or log a cane and a reed to populate this window.';
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
       decoration: BoxDecoration(
@@ -3558,6 +3558,11 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
   @override
   Widget build(BuildContext context) {
     final manualValue = _tryParseNumber(_manualController.text);
+    final selectedPitch =
+      manualValue != null && manualValue > 0 ? _pitchFromFrequency(manualValue) : null;
+    final selectedPointScore = manualValue != null && manualValue > 0
+      ? LauritzenToneScale.continuousIndexFromFrequency(manualValue)
+      : null;
 
     return SafeArea(
       child: Padding(
@@ -3742,6 +3747,17 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                   }
                 },
               ),
+              if (selectedPitch != null && selectedPointScore != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Tone ${selectedPitch.label} (${selectedPitch.cents >= 0 ? '+' : ''}${selectedPitch.cents} cents) | Point score ${selectedPointScore.toStringAsFixed(1)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
               const SizedBox(height: 12),
               Row(
                 children: [

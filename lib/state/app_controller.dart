@@ -438,6 +438,11 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _ensureGraph4QaSeed() async {
+    if (kIsWeb) {
+      await _upsertGraph4CanonicalSubset();
+      return;
+    }
+
     final alreadySeeded = _caneSamples.any((sample) => sample.sampleName.startsWith('G4-'));
     if (alreadySeeded) {
       await _upsertGraph4CanonicalSubset();
