@@ -15,6 +15,30 @@ import '../models/reed.dart';
 import '../services/prediction_engine.dart';
 import '../services/resonance_capture_service.dart';
 import '../state/app_controller.dart';
+import '../state/theme_controller.dart';
+import '../app.dart'
+    show
+        kBrandBurgundy,
+        kBrandBurgundyDark,
+        kBrandBurgundyDeep,
+        kBrandGold,
+        kBrandGoldLight,
+        kBrandGoldPale,
+        kBrandCane,
+        kBrandParchment,
+        kBrandParchmentDeep,
+        kSurfaceTint,
+        kSurfaceLine,
+        kInk,
+        kStatusSuccess,
+        kStatusSuccessAccent,
+        kStatusSuccessSoft,
+        kStatusWarning,
+        kStatusWarningAccent,
+        kStatusWarningSoft,
+        kStatusDanger,
+        kStatusDangerAccent,
+        kStatusNeutral;
 
 class ShellPage extends StatefulWidget {
   const ShellPage({super.key});
@@ -39,6 +63,7 @@ class _ShellPageState extends State<ShellPage> {
           _BehaviorTab(controller: controller),
           _CaneTab(controller: controller),
           _ReedTab(controller: controller),
+          const _SettingsTab(),
         ];
 
         return Scaffold(
@@ -58,11 +83,12 @@ class _ShellPageState extends State<ShellPage> {
             ],
           ),
           body: Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFFE5E2D8), Color(0xFFE7EFE9), Color(0xFFD8E2E6)],
+                colors: Theme.of(context).extension<BrandTheme>()?.bodyGradient ??
+                    const [kBrandParchment, kBrandParchmentDeep, kSurfaceTint],
               ),
             ),
             child: SafeArea(child: pages[_tab]),
@@ -75,6 +101,7 @@ class _ShellPageState extends State<ShellPage> {
               NavigationDestination(icon: Icon(Icons.insights_rounded), label: 'Behavior'),
               NavigationDestination(icon: Icon(Icons.straighten), label: 'Cane'),
               NavigationDestination(icon: Icon(Icons.library_music), label: 'Reeds'),
+              NavigationDestination(icon: Icon(Icons.tune_rounded), label: 'About'),
             ],
           ),
         );
@@ -169,6 +196,7 @@ class _DashboardTabState extends State<_DashboardTab> {
 
     final successful = reeds.where((r) => r.isSuccessful).length;
     final unsuccessful = reeds.length - successful;
+    final goldStandardCount = reeds.where((r) => r.goldStandard).length;
     final avgStiffness = avg(linkedCanes.map((c) => c.relativeStiffness).where((v) => v > 0));
     final avgFrequency = avg(linkedCanes.map((c) => c.naturalFrequencyHz).where((v) => v > 0));
     final avgFlex = avg(linkedCanes.map((c) => c.flexibilityDeg).where((v) => v > 0));
@@ -180,7 +208,9 @@ class _DashboardTabState extends State<_DashboardTab> {
     // Top-performer profile: average cane characteristics of the highest
     // scoring reeds in the selected window.
     final ranked = [...reeds]..sort((a, b) => b.overallScore.compareTo(a.overallScore));
-    final topCount = math.max(1, (ranked.length * 0.25).ceil()).clamp(1, ranked.length);
+    final topCount = ranked.isEmpty
+        ? 0
+        : math.max(1, (ranked.length * 0.25).ceil()).clamp(1, ranked.length);
     final topReeds = ranked.take(topCount).toList();
     final topCanes = topReeds
         .map((r) => canesById[r.caneId])
@@ -190,8 +220,6 @@ class _DashboardTabState extends State<_DashboardTab> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
-        const _PhilosophyHeader(),
-        const SizedBox(height: 14),
         _RangeSelector(
           range: _range,
           onChanged: (value) => setState(() => _range = value),
@@ -213,6 +241,10 @@ class _DashboardTabState extends State<_DashboardTab> {
             successful: successful,
             unsuccessful: unsuccessful,
           ),
+          if (goldStandardCount > 0) ...[
+            const SizedBox(height: 10),
+            _GoldStandardSummary(count: goldStandardCount),
+          ],
           const SizedBox(height: 12),
           _SectionCard(
             title: 'Averages (${_range.longLabel})',
@@ -266,7 +298,7 @@ class _EmptyDashboardCta extends StatelessWidget {
             offset: const Offset(0, 6),
           ),
         ],
-        border: Border.all(color: const Color(0xFFE0E6E8)),
+        border: Border.all(color: kSurfaceLine),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,7 +306,7 @@ class _EmptyDashboardCta extends StatelessWidget {
           Row(
             children: [
               const Icon(Icons.insights_outlined,
-                  color: Color(0xFF16697A), size: 22),
+                  color: kBrandBurgundy, size: 22),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -282,7 +314,7 @@ class _EmptyDashboardCta extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F3640),
+                    color: kBrandBurgundyDeep,
                   ),
                 ),
               ),
@@ -311,7 +343,7 @@ class _EmptyDashboardCta extends StatelessWidget {
                 icon: const Icon(Icons.add_circle_outline, size: 18),
                 label: const Text('Log a cane'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF16697A),
+                  backgroundColor: kBrandBurgundy,
                 ),
               ),
               OutlinedButton.icon(
@@ -323,8 +355,8 @@ class _EmptyDashboardCta extends StatelessWidget {
                 icon: const Icon(Icons.music_note_outlined, size: 18),
                 label: const Text('Log a reed'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF16697A),
-                  side: const BorderSide(color: Color(0xFF16697A)),
+                  foregroundColor: kBrandBurgundy,
+                  side: const BorderSide(color: kBrandBurgundy),
                 ),
               ),
             ],
@@ -345,46 +377,60 @@ class _PhilosophyHeader extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         gradient: const LinearGradient(
-          colors: [Color(0xFF16697A), Color(0xFF489FB5)],
+          colors: [kBrandBurgundyDeep, kBrandBurgundyDark, kBrandBurgundy],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.14),
-            blurRadius: 14,
-            offset: const Offset(0, 7),
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'ReedLab',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.85),
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.5,
-              fontSize: 12,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const _BrandLogoMark(size: 56),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ReedLab',
+                      style: TextStyle(
+                        color: kBrandGoldLight.withValues(alpha: 0.95),
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 2.0,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'It\'s about a Predictable cane, not a perfect cane.',
+                      style: TextStyle(
+                        color: kBrandParchment,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 22,
+                        height: 1.15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          const Text(
-            'Predictable cane, not perfect cane.',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: 22,
-              height: 1.15,
-            ),
-          ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           Text(
             'A measurement journal for bassoon reed makers. Log every cane and reed, '
             'then let the app surface the physical fingerprint of the ones that play best for you.',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.95),
+              color: kBrandParchment.withValues(alpha: 0.92),
               fontSize: 13.5,
               height: 1.35,
             ),
@@ -393,13 +439,14 @@ class _PhilosophyHeader extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.18),
+              color: kBrandGold.withValues(alpha: 0.20),
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: kBrandGold.withValues(alpha: 0.45)),
             ),
             child: const Text(
-              'Developed using the research and craft of professional bassoonist '
+              'Developed using a combination of well known methods, and the craft and research from professional bassoonist '
               'Are Bøen Lauritzen, who has made his own reeds throughout a long '
-              'career as a working bassoon player.',
+              'career as a working bassoon player, and developed the ARI method.',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 12.5,
@@ -458,7 +505,7 @@ class _CountRow extends StatelessWidget {
           child: _CountCard(
             label: 'Reed evaluations',
             value: '$evaluations',
-            color: const Color(0xFF16697A),
+            color: kBrandBurgundy,
             icon: Icons.assignment_outlined,
           ),
         ),
@@ -467,7 +514,7 @@ class _CountRow extends StatelessWidget {
           child: _CountCard(
             label: 'Successful',
             value: '$successful',
-            color: const Color(0xFF2E7D32),
+            color: kStatusSuccess,
             icon: Icons.check_circle_outline,
           ),
         ),
@@ -476,7 +523,7 @@ class _CountRow extends StatelessWidget {
           child: _CountCard(
             label: 'Unsuccessful',
             value: '$unsuccessful',
-            color: const Color(0xFFC0392B),
+            color: kStatusDanger,
             icon: Icons.cancel_outlined,
           ),
         ),
@@ -500,6 +547,7 @@ class _CountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -523,7 +571,7 @@ class _CountCard extends StatelessWidget {
               label,
               style: TextStyle(
                 fontSize: 11.5,
-                color: Colors.black.withValues(alpha: 0.7),
+                color: onSurface.withValues(alpha: 0.7),
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -572,12 +620,14 @@ class _StatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final onSurface = scheme.onSurface;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.65),
+        color: scheme.surface.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF16697A).withValues(alpha: 0.12)),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -586,7 +636,7 @@ class _StatTile extends StatelessWidget {
             data.label,
             style: TextStyle(
               fontSize: 11.5,
-              color: Colors.black.withValues(alpha: 0.65),
+              color: onSurface.withValues(alpha: 0.65),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -598,7 +648,11 @@ class _StatTile extends StatelessWidget {
               Flexible(
                 child: Text(
                   data.value,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                    color: onSurface,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -608,7 +662,7 @@ class _StatTile extends StatelessWidget {
                   data.unit,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.black.withValues(alpha: 0.6),
+                    color: onSurface.withValues(alpha: 0.6),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -672,7 +726,7 @@ class _TopPerformerCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFF2E7D32).withValues(alpha: 0.12),
+                color: kStatusSuccessSoft,
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
@@ -681,7 +735,7 @@ class _TopPerformerCard extends StatelessWidget {
                 '(${ReedEvaluation.gradeForScore(avgScore)})',
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF1B5E20),
+                  color: kStatusSuccess,
                   fontSize: 12,
                 ),
               ),
@@ -1016,10 +1070,14 @@ class _BehaviorTabState extends State<_BehaviorTab> {
                         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
                       ),
                     ),
+                    if (entry.evaluation.goldStandard) ...[
+                      const _GoldStandardBadge(compact: true),
+                      const SizedBox(width: 8),
+                    ],
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: entry.success ? const Color(0xFF2E7D32) : const Color(0xFFD64545),
+                        color: entry.success ? kStatusSuccess : kStatusDanger,
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
@@ -1104,11 +1162,19 @@ class _BehaviorTabState extends State<_BehaviorTab> {
                               ),
                             ),
                           ),
-                    title: Text(entry.cane.sampleName),
+                    title: Row(
+                      children: [
+                        Expanded(child: Text(entry.cane.sampleName)),
+                        if (entry.evaluation.goldStandard) ...[
+                          const SizedBox(width: 6),
+                          const _GoldStandardBadge(compact: true, label: 'Gold'),
+                        ],
+                      ],
+                    ),
                     subtitle: Text(subtitle),
                     trailing: Icon(
                       entry.success ? Icons.check_circle : Icons.cancel,
-                      color: entry.success ? const Color(0xFF2E7D32) : const Color(0xFFD64545),
+                      color: entry.success ? kStatusSuccess : kStatusDanger,
                     ),
                     onTap: () {
                       Navigator.of(sheetContext).pop();
@@ -1319,7 +1385,7 @@ class _BehaviorMapPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final frame = Rect.fromLTWH(0, 0, size.width, size.height);
-    final background = Paint()..color = const Color(0xFFF4F7F6);
+    final background = Paint()..color = kSurfaceTint;
     canvas.drawRRect(RRect.fromRectAndRadius(frame, const Radius.circular(12)), background);
 
     final plotRect = projection.plotRect;
@@ -1350,12 +1416,37 @@ class _BehaviorMapPainter extends CustomPainter {
       height: preferred.height * 2.3,
     );
 
-    canvas.drawOval(problematic, Paint()..color = const Color(0x30D9534F));
-    canvas.drawOval(transition, Paint()..color = const Color(0x35EBCB57));
-    canvas.drawOval(preferred, Paint()..color = const Color(0x4066BB6A));
+    // Three concentric behaviour zones drawn with radial gradients for a
+    // softer, more sculpted look than the previous flat ovals.
+    void drawGradientZone(Rect rect, Color baseColor, double centerAlpha, double edgeAlpha) {
+      final paint = Paint()
+        ..shader = RadialGradient(
+          colors: [
+            baseColor.withValues(alpha: centerAlpha),
+            baseColor.withValues(alpha: edgeAlpha),
+          ],
+          stops: const [0.0, 1.0],
+        ).createShader(rect);
+      canvas.drawOval(rect, paint);
+    }
+
+    drawGradientZone(problematic, kStatusDanger, 0.05, 0.22);
+    drawGradientZone(transition, kStatusWarning, 0.10, 0.26);
+    drawGradientZone(preferred, kStatusSuccess, 0.34, 0.10);
+
+    // Crisp hairline rings on each zone boundary for definition.
+    final zoneOutline = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    canvas.drawOval(preferred,
+        zoneOutline..color = kStatusSuccess.withValues(alpha: 0.55));
+    canvas.drawOval(transition,
+        zoneOutline..color = kStatusWarning.withValues(alpha: 0.45));
+    canvas.drawOval(problematic,
+        zoneOutline..color = kStatusDanger.withValues(alpha: 0.35));
 
     final gridPaint = Paint()
-      ..color = const Color(0x55677777)
+      ..color = kSurfaceLine.withValues(alpha: 0.6)
       ..strokeWidth = 1;
     for (int i = 1; i <= 3; i++) {
       final x = plotRect.left + (plotRect.width / 4) * i;
@@ -1365,7 +1456,7 @@ class _BehaviorMapPainter extends CustomPainter {
     }
 
     final axisPaint = Paint()
-      ..color = const Color(0xAA37474F)
+      ..color = kBrandBurgundyDeep.withValues(alpha: 0.7)
       ..strokeWidth = 1.2;
     canvas.drawLine(
       Offset(plotRect.left, plotRect.bottom),
@@ -1383,7 +1474,7 @@ class _BehaviorMapPainter extends CustomPainter {
         text: TextSpan(
           text: text,
           style: const TextStyle(
-            color: Color(0xFF37474F),
+            color: kInk,
             fontSize: 11,
             fontWeight: FontWeight.w600,
           ),
@@ -1417,23 +1508,67 @@ class _BehaviorMapPainter extends CustomPainter {
     for (final cluster in clusters) {
       final successCount = cluster.items.where((item) => item.entry.success).length;
       final ratio = cluster.items.isEmpty ? 0.5 : successCount / cluster.items.length;
-      final color = Color.lerp(const Color(0xFFD64545), const Color(0xFF2E7D32), ratio)!;
+      final color = Color.lerp(kStatusDanger, kStatusSuccess, ratio)!;
       final hasGoldStandard =
           cluster.items.any((item) => item.entry.evaluation.goldStandard);
 
       final radius = cluster.items.length == 1
           ? 4.0
           : (6 + math.sqrt(cluster.items.length) * 2).clamp(8, 16).toDouble();
-      canvas.drawCircle(cluster.center, radius, Paint()..color = color);
 
+      // Soft drop shadow under every cluster dot for premium depth.
+      canvas.drawCircle(
+        cluster.center.translate(0, 1.5),
+        radius + 1.5,
+        Paint()
+          ..color = Colors.black.withValues(alpha: 0.18)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.4),
+      );
+
+      // Gold standard halo — a blurred warm glow rendered behind the dot.
       if (hasGoldStandard) {
         canvas.drawCircle(
           cluster.center,
-          radius + 2,
+          radius + 9,
           Paint()
-            ..color = const Color(0xFFE0B22D)
+            ..color = const Color(0xFFE2B24A).withValues(alpha: 0.55)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+        );
+      }
+
+      // The dot itself, with a vertical highlight gradient.
+      final dotRect = Rect.fromCircle(center: cluster.center, radius: radius);
+      canvas.drawCircle(
+        cluster.center,
+        radius,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color.lerp(color, Colors.white, 0.35)!,
+              color,
+            ],
+          ).createShader(dotRect),
+      );
+
+      // Crisp gold ring for Gold Standard clusters.
+      if (hasGoldStandard) {
+        canvas.drawCircle(
+          cluster.center,
+          radius + 2.5,
+          Paint()
+            ..color = const Color(0xFFE2B24A)
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 2,
+            ..strokeWidth = 2.2,
+        );
+        canvas.drawCircle(
+          cluster.center,
+          radius + 2.5,
+          Paint()
+            ..color = const Color(0xFFF5D67A)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.8,
         );
       }
 
@@ -1442,7 +1577,7 @@ class _BehaviorMapPainter extends CustomPainter {
           cluster.center,
           radius,
           Paint()
-            ..color = Colors.white
+            ..color = Colors.white.withValues(alpha: 0.95)
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.4,
         );
@@ -1454,6 +1589,7 @@ class _BehaviorMapPainter extends CustomPainter {
               color: Colors.white,
               fontSize: 10,
               fontWeight: FontWeight.w700,
+              shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
             ),
           ),
           textDirection: TextDirection.ltr,
@@ -1466,7 +1602,7 @@ class _BehaviorMapPainter extends CustomPainter {
     }
 
     if (livePoint != null) {
-      canvas.drawCircle(project(livePoint!), 6, Paint()..color = const Color(0xFF0D47A1));
+      canvas.drawCircle(project(livePoint!), 6, Paint()..color = kBrandBurgundy);
     }
   }
 
@@ -1625,7 +1761,7 @@ class _FavoredCompromiseCard extends StatelessWidget {
                     row.value,
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF16697A),
+                      color: kBrandBurgundy,
                     ),
                   ),
                 ],
@@ -1672,6 +1808,9 @@ class _MusicalResonanceWindowCard extends StatelessWidget {
         ? 'in tune'
         : '${pitch.cents > 0 ? '+' : ''}${pitch.cents} cents';
 
+    final scheme = Theme.of(context).colorScheme;
+    final mutedInk = scheme.onSurface.withValues(alpha: 0.65);
+
     return _SectionCard(
       title: 'Musical resonance window',
       child: Column(
@@ -1681,47 +1820,47 @@ class _MusicalResonanceWindowCard extends StatelessWidget {
             'Centered on your highest-scoring reeds:',
             style: TextStyle(
               fontSize: 13,
-              color: Colors.black.withValues(alpha: 0.65),
+              color: mutedInk,
             ),
           ),
           const SizedBox(height: 10),
           Text(
             '${p.frequency.toStringAsFixed(0)} Hz',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 30,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF0F3640),
+              color: scheme.primary,
             ),
           ),
           const SizedBox(height: 2),
           Text(
             'Pitch ${pitch.label} ($centsLabel)',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF16697A),
+              color: scheme.primary,
             ),
           ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFE9F3F5),
+              color: scheme.surfaceContainerHigh,
               borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: scheme.outline),
             ),
             child: Row(
               children: [
-                const Icon(Icons.unfold_more,
-                    size: 18, color: Color(0xFF16697A)),
+                Icon(Icons.unfold_more, size: 18, color: scheme.primary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Observed success range: '
                     '${p.freqMin.toStringAsFixed(0)} - ${p.freqMax.toStringAsFixed(0)} Hz',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F3640),
+                      color: scheme.onSurface,
                     ),
                   ),
                 ),
@@ -1733,7 +1872,7 @@ class _MusicalResonanceWindowCard extends StatelessWidget {
             'Tap new cane in the Cane tab. If its natural frequency lands inside this window, it is likely to produce a strong reed.',
             style: TextStyle(
               fontSize: 12.5,
-              color: Colors.black.withValues(alpha: 0.6),
+              color: scheme.onSurface.withValues(alpha: 0.6),
               height: 1.35,
             ),
           ),
@@ -1779,7 +1918,7 @@ class _DynamicZonesCard extends StatelessWidget {
             'Stay inside these corridors — derived from $totalSuccess successful reed${totalSuccess == 1 ? '' : 's'} — to repeat what has worked.',
             style: TextStyle(
               fontSize: 13,
-              color: Colors.black.withValues(alpha: 0.65),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
             ),
           ),
           const SizedBox(height: 12),
@@ -1816,14 +1955,14 @@ class _ZoneRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F7F4),
+        color: kStatusSuccessSoft,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFCBE0D4)),
+        border: Border.all(color: kStatusSuccess.withValues(alpha: 0.25)),
       ),
       child: Row(
         children: [
           const Icon(Icons.check_circle_outline,
-              size: 18, color: Color(0xFF2E7D32)),
+              size: 18, color: kStatusSuccess),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -1833,14 +1972,14 @@ class _ZoneRow extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF1B5E20),
+                      color: kStatusSuccess,
                     )),
                 const SizedBox(height: 2),
                 Text(
                   'Aim for $target  •  stay within $corridor',
                   style: const TextStyle(
                     fontSize: 13,
-                    color: Color(0xFF0F3640),
+                    color: kBrandBurgundyDeep,
                   ),
                 ),
               ],
@@ -1903,37 +2042,37 @@ _PitchValue _pitchFromFrequency(double frequency) {
 
 _MetricStatus _ariStatus(double? ari) {
   if (ari == null) {
-    return const _MetricStatus(label: 'No ARI (missing flexibility)', color: Color(0xFF6D6D6D));
+    return const _MetricStatus(label: 'No ARI (missing flexibility)', color: kStatusNeutral);
   }
   if (ari <= -6) {
-    return const _MetricStatus(label: 'A+ Excellent', color: Color(0xFF0B4D0E));
+    return const _MetricStatus(label: 'A+ Excellent', color: kStatusSuccess);
   }
   if (ari < 0) {
-    return const _MetricStatus(label: 'A Very Good', color: Color(0xFF1B5E20));
+    return const _MetricStatus(label: 'A Very Good', color: kStatusSuccessAccent);
   }
   if (ari <= 4) {
-    return const _MetricStatus(label: 'B Acceptable', color: Color(0xFFF9A825));
+    return const _MetricStatus(label: 'B Acceptable', color: kStatusWarning);
   }
   if (ari < 10) {
-    return const _MetricStatus(label: 'C Weak Match', color: Color(0xFFE67E22));
+    return const _MetricStatus(label: 'C Weak Match', color: kStatusWarningAccent);
   }
-  return const _MetricStatus(label: 'D Poor (+10 or more)', color: Color(0xFFC62828));
+  return const _MetricStatus(label: 'D Poor (+10 or more)', color: kStatusDanger);
 }
 
 _MetricStatus _buoyancyStatus(double? percent) {
   if (percent == null) {
-    return const _MetricStatus(label: 'No buoyancy data', color: Color(0xFF6D6D6D));
+    return const _MetricStatus(label: 'No buoyancy data', color: kStatusNeutral);
   }
   if (percent >= 81 && percent <= 85) {
-    return const _MetricStatus(label: 'Excellent', color: Color(0xFF1B5E20));
+    return const _MetricStatus(label: 'Excellent', color: kStatusSuccess);
   }
   if (percent >= 78 && percent <= 87) {
-    return const _MetricStatus(label: 'Good', color: Color(0xFF2E7D32));
+    return const _MetricStatus(label: 'Good', color: kStatusSuccessAccent);
   }
   if ((percent >= 74 && percent < 78) || (percent > 87 && percent <= 90)) {
-    return const _MetricStatus(label: 'Borderline', color: Color(0xFFF9A825));
+    return const _MetricStatus(label: 'Borderline', color: kStatusWarning);
   }
-  return const _MetricStatus(label: 'Weak Candidate', color: Color(0xFFC62828));
+  return const _MetricStatus(label: 'Weak Candidate', color: kStatusDanger);
 }
 
 String _combinedPredictionMessage(double ari, double buoyancyPercent) {
@@ -2653,6 +2792,8 @@ class _AddCanePageState extends State<AddCanePage> {
   DateTime _purchaseDate = DateTime.now();
   String _innerGougeType = 'none';
 
+  int _step = 0;
+
   bool get _isEditing => widget.initialSample != null;
 
   bool get _supportsCameraCapture {
@@ -2707,62 +2848,234 @@ class _AddCanePageState extends State<AddCanePage> {
 
   @override
   Widget build(BuildContext context) {
-    final averageTake = _resonanceTakesHz.isEmpty
-        ? null
-        : _resonanceTakesHz.reduce((a, b) => a + b) / _resonanceTakesHz.length;
     final controller = context.watch<AppController>();
-    final draftMetricSample = _draftMetricSample();
+    final steps = _buildSteps(controller);
+    if (_step >= steps.length) {
+      _step = steps.length - 1;
+    }
+    final current = steps[_step];
+    final isLast = _step == steps.length - 1;
     final livePrediction = _draftPrediction(controller);
+    final draftMetricSample = _draftMetricSample();
 
     return Scaffold(
       appBar: AppBar(title: Text(_isEditing ? 'Edit Cane Sample' : 'Add Cane Sample')),
       body: Form(
         key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
+        child: Column(
           children: [
-            TextFormField(
-              controller: _sampleNameController,
-              decoration: const InputDecoration(labelText: 'Sample name / ID'),
-              validator: (value) => (value ?? '').trim().isEmpty ? 'Required' : null,
+            // Progress header
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.06),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Step ${_step + 1} of ${steps.length}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context).colorScheme.primary,
+                          letterSpacing: 0.6,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (current.optional)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.tertiary.withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text('Optional', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: (_step + 1) / steps.length,
+                      minHeight: 6,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    current.title,
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                  ),
+                  if (current.helper != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      current.helper!,
+                      style: TextStyle(fontSize: 13, color: Colors.black.withValues(alpha: 0.65)),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(height: 10),
-            TextFormField(
-              controller: _batchController,
-              readOnly: true,
-              decoration: const InputDecoration(labelText: 'Date of purchase'),
-              onTap: _pickPurchaseDate,
-              validator: (value) => (value ?? '').trim().isEmpty ? 'Required' : null,
+            // Step body
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                children: [
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(begin: const Offset(0.05, 0), end: Offset.zero).animate(animation),
+                        child: child,
+                      ),
+                    ),
+                    child: Container(
+                      key: ValueKey<int>(_step),
+                      child: current.builder(),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _SectionCard(
+                    title: 'Live Prediction',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _PredictionStatus(
+                          missing: _missingForPrediction(),
+                          result: livePrediction,
+                        ),
+                        if (draftMetricSample != null) ...[
+                          const SizedBox(height: 10),
+                          _MetricPreview(sample: draftMetricSample),
+                        ],
+                        if (livePrediction != null) ...[
+                          const SizedBox(height: 10),
+                          _PredictionSummary(result: livePrediction),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 10),
-            Autocomplete<String>(
-              initialValue: TextEditingValue(text: _sourceController.text),
-              optionsBuilder: (textEditingValue) {
-                final query = textEditingValue.text.toLowerCase();
-                final sources = controller.sourceHistory;
-                if (query.isEmpty) {
-                  return sources;
-                }
-                return sources.where((source) => source.toLowerCase().contains(query));
-              },
-              onSelected: (value) {
-                _sourceController.text = value;
-              },
-              fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-                textEditingController.value = _sourceController.value;
-                return TextFormField(
-                  controller: textEditingController,
-                  focusNode: focusNode,
-                  decoration: const InputDecoration(labelText: 'Source / Grower'),
-                  validator: (value) => (value ?? '').trim().isEmpty ? 'Required' : null,
-                  onChanged: (value) {
-                    _sourceController.value = textEditingController.value;
-                    setState(() {});
-                  },
-                );
-              },
+            // Bottom navigation bar
+            SafeArea(
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                decoration: const BoxDecoration(
+                  color: kBrandParchment,
+                  border: Border(top: BorderSide(color: kSurfaceLine)),
+                ),
+                child: Row(
+                  children: [
+                    if (_step > 0)
+                      OutlinedButton.icon(
+                        onPressed: () => setState(() => _step--),
+                        icon: const Icon(Icons.arrow_back),
+                        label: const Text('Back'),
+                      ),
+                    const Spacer(),
+                    if (current.optional && !isLast)
+                      TextButton(
+                        onPressed: () => setState(() => _step++),
+                        child: const Text('Skip'),
+                      ),
+                    const SizedBox(width: 8),
+                    if (!isLast)
+                      FilledButton.icon(
+                        onPressed: () {
+                          if (current.canAdvance == null || current.canAdvance!()) {
+                            setState(() => _step++);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Please complete this step or use Skip.')),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.arrow_forward),
+                        label: const Text('Next'),
+                      )
+                    else
+                      FilledButton.icon(
+                        onPressed: _save,
+                        icon: const Icon(Icons.save),
+                        label: Text(_isEditing ? 'Save changes' : 'Save sample'),
+                      ),
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<_WizardStep> _buildSteps(AppController controller) {
+    final averageTake = _resonanceTakesHz.isEmpty
+        ? null
+        : _resonanceTakesHz.reduce((a, b) => a + b) / _resonanceTakesHz.length;
+
+    return [
+      _WizardStep(
+        title: 'Sample name',
+        helper: 'Give this piece of cane a label you will recognize later.',
+        builder: () => TextFormField(
+          controller: _sampleNameController,
+          decoration: const InputDecoration(labelText: 'Sample name / ID'),
+          onChanged: (_) => setState(() {}),
+        ),
+        canAdvance: () => _sampleNameController.text.trim().isNotEmpty,
+      ),
+      _WizardStep(
+        title: 'Date of purchase',
+        helper: 'When did you receive this cane?',
+        builder: () => TextFormField(
+          controller: _batchController,
+          readOnly: true,
+          decoration: const InputDecoration(labelText: 'Date of purchase'),
+          onTap: _pickPurchaseDate,
+        ),
+        canAdvance: () => _batchController.text.trim().isNotEmpty,
+      ),
+      _WizardStep(
+        title: 'Source / Grower',
+        helper: 'Where did the cane come from? Start typing to use a previous source.',
+        builder: () => Autocomplete<String>(
+          initialValue: TextEditingValue(text: _sourceController.text),
+          optionsBuilder: (textEditingValue) {
+            final query = textEditingValue.text.toLowerCase();
+            final sources = controller.sourceHistory;
+            if (query.isEmpty) return sources;
+            return sources.where((source) => source.toLowerCase().contains(query));
+          },
+          onSelected: (value) {
+            _sourceController.text = value;
+            setState(() {});
+          },
+          fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+            textEditingController.value = _sourceController.value;
+            return TextFormField(
+              controller: textEditingController,
+              focusNode: focusNode,
+              decoration: const InputDecoration(labelText: 'Source / Grower'),
+              onChanged: (value) {
+                _sourceController.value = textEditingController.value;
+                setState(() {});
+              },
+            );
+          },
+        ),
+        canAdvance: () => _sourceController.text.trim().isNotEmpty,
+      ),
+      _WizardStep(
+        title: 'Length (mm)',
+        helper: 'Measured tip-to-tip on the gouged blank.',
+        builder: () => Column(
+          children: [
             _NumberInput(
               controller: _lengthController,
               label: 'Length (mm)',
@@ -2775,7 +3088,15 @@ class _AddCanePageState extends State<AddCanePage> {
                 setState(() {});
               },
             ),
-            const SizedBox(height: 10),
+          ],
+        ),
+        canAdvance: () => _tryParseNumber(_lengthController.text) != null,
+      ),
+      _WizardStep(
+        title: 'Width (mm)',
+        helper: 'Width at the widest point of the gouge.',
+        builder: () => Column(
+          children: [
             _NumberInput(
               controller: _widthController,
               label: 'Width (mm)',
@@ -2788,8 +3109,20 @@ class _AddCanePageState extends State<AddCanePage> {
                 setState(() {});
               },
             ),
-            const SizedBox(height: 10),
-            _NumberInput(controller: _thicknessController, label: 'Thickness (mm)', onChanged: (_) => setState(() {})),
+          ],
+        ),
+        canAdvance: () => _tryParseNumber(_widthController.text) != null,
+      ),
+      _WizardStep(
+        title: 'Thickness (mm)',
+        helper: 'Caliper reading on the bark / centre of the gouge.',
+        builder: () => Column(
+          children: [
+            _NumberInput(
+              controller: _thicknessController,
+              label: 'Thickness (mm)',
+              onChanged: (_) => setState(() {}),
+            ),
             _ValuePresetChips(
               values: controller.thicknessOuterHistory,
               onSelected: (value) {
@@ -2797,44 +3130,59 @@ class _AddCanePageState extends State<AddCanePage> {
                 setState(() {});
               },
             ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: _innerGougeType,
-              decoration: const InputDecoration(labelText: 'Gouge'),
-              items: const [
-                DropdownMenuItem(value: 'excentric', child: Text('Excentric')),
-                DropdownMenuItem(value: 'concentric', child: Text('Concentric')),
-                DropdownMenuItem(value: 'none', child: Text('None')),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  _innerGougeType = value ?? 'none';
-                });
-              },
-            ),
-            const SizedBox(height: 10),
+          ],
+        ),
+        canAdvance: () => _tryParseNumber(_thicknessController.text) != null,
+      ),
+      _WizardStep(
+        title: 'Gouge style',
+        helper: 'How is the inside of the cane shaped?',
+        builder: () => DropdownButtonFormField<String>(
+          initialValue: _innerGougeType,
+          decoration: const InputDecoration(labelText: 'Gouge'),
+          items: const [
+            DropdownMenuItem(value: 'excentric', child: Text('Excentric')),
+            DropdownMenuItem(value: 'concentric', child: Text('Concentric')),
+            DropdownMenuItem(value: 'none', child: Text('None / unknown')),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _innerGougeType = value ?? 'none';
+            });
+          },
+        ),
+        optional: true,
+      ),
+      _WizardStep(
+        title: 'Applied load (g)',
+        helper: 'Default 200 g matches the Lauritzen flex test.',
+        builder: () => Column(
+          children: [
             _NumberInput(
-              controller: _massController,
-              label: 'Mass (g, total cane weight, optional)',
-              requiredField: false,
+              controller: _loadController,
+              label: 'Applied load (g)',
               onChanged: (_) => setState(() {}),
             ),
             _ValuePresetChips(
-              values: controller.massHistory,
+              values: controller.loadHistory,
               onSelected: (value) {
-                _massController.text = value.toStringAsFixed(3);
+                _loadController.text = value.toStringAsFixed(1);
                 setState(() {});
               },
             ),
-            const SizedBox(height: 6),
-            const Text(
-              'Hardness is the material property of interest here: resistance to indentation and scratching. Mass is supporting data.',
-              style: TextStyle(fontSize: 12),
-            ),
-            const SizedBox(height: 10),
+          ],
+        ),
+        canAdvance: () => _tryParseNumber(_loadController.text) != null,
+      ),
+      _WizardStep(
+        title: 'Flexibility / Twist (deg)',
+        helper: 'Optional — skip if you don\'t measure it.',
+        optional: true,
+        builder: () => Column(
+          children: [
             _NumberInput(
               controller: _flexibilityController,
-              label: 'Flexibility / Twist (deg, optional)',
+              label: 'Flexibility (deg)',
               requiredField: false,
               onChanged: (_) => setState(() {}),
             ),
@@ -2845,20 +3193,15 @@ class _AddCanePageState extends State<AddCanePage> {
                 setState(() {});
               },
             ),
-            const SizedBox(height: 10),
-            _NumberInput(
-              controller: _loadController,
-              label: 'Applied load (g, standard 200 g)',
-              onChanged: (_) => setState(() {}),
-            ),
-            _ValuePresetChips(
-              values: controller.loadHistory,
-              onSelected: (value) {
-                _loadController.text = value.toStringAsFixed(1);
-                setState(() {});
-              },
-            ),
-            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+      _WizardStep(
+        title: 'Natural frequency (Hz)',
+        helper: 'Type a value or tap the mic to record resonance takes.',
+        builder: () => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2887,16 +3230,48 @@ class _AddCanePageState extends State<AddCanePage> {
             ),
             if (averageTake != null)
               Padding(
-                padding: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  'Average recorded resonance: ${averageTake.toStringAsFixed(1)} Hz | Eigenfrequency score ${LauritzenToneScale.indexFromFrequency(averageTake).toStringAsFixed(1)}',
+                  'Avg recorded: ${averageTake.toStringAsFixed(1)} Hz · score ${LauritzenToneScale.indexFromFrequency(averageTake).toStringAsFixed(1)}',
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
-            const SizedBox(height: 10),
+          ],
+        ),
+        canAdvance: () =>
+            _tryParseNumber(_frequencyController.text) != null || _resonanceTakesHz.isNotEmpty,
+      ),
+      _WizardStep(
+        title: 'Mass (g)',
+        helper: 'Total cane weight. Skip if you do not have a scale.',
+        optional: true,
+        builder: () => Column(
+          children: [
+            _NumberInput(
+              controller: _massController,
+              label: 'Mass (g)',
+              requiredField: false,
+              onChanged: (_) => setState(() {}),
+            ),
+            _ValuePresetChips(
+              values: controller.massHistory,
+              onSelected: (value) {
+                _massController.text = value.toStringAsFixed(3);
+                setState(() {});
+              },
+            ),
+          ],
+        ),
+      ),
+      _WizardStep(
+        title: 'Submerged length (mm)',
+        helper: 'Buoyancy test — skip if not performed.',
+        optional: true,
+        builder: () => Column(
+          children: [
             _NumberInput(
               controller: _submergedLengthController,
-              label: 'Submerged length (mm, buoyancy test optional)',
+              label: 'Submerged length (mm)',
               requiredField: false,
               onChanged: (_) => setState(() {}),
             ),
@@ -2907,8 +3282,21 @@ class _AddCanePageState extends State<AddCanePage> {
                 setState(() {});
               },
             ),
-            const SizedBox(height: 10),
-            _NumberInput(controller: _hardnessController, label: 'Hardness (optional)', requiredField: false),
+          ],
+        ),
+      ),
+      _WizardStep(
+        title: 'Hardness',
+        helper: 'Optional indentation/scratch resistance value.',
+        optional: true,
+        builder: () => Column(
+          children: [
+            _NumberInput(
+              controller: _hardnessController,
+              label: 'Hardness',
+              requiredField: false,
+              onChanged: (_) => setState(() {}),
+            ),
             _ValuePresetChips(
               values: controller.hardnessHistory,
               onSelected: (value) {
@@ -2916,7 +3304,16 @@ class _AddCanePageState extends State<AddCanePage> {
                 setState(() {});
               },
             ),
-            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+      _WizardStep(
+        title: 'Notes & photos',
+        helper: 'Anything else worth remembering about this cane.',
+        optional: true,
+        builder: () => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             _TextInput(controller: _notesController, label: 'Notes', maxLines: 3, requiredField: false),
             const SizedBox(height: 12),
             _SectionCard(
@@ -2945,31 +3342,50 @@ class _AddCanePageState extends State<AddCanePage> {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            _SectionCard(
-              title: 'Live Prediction',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (draftMetricSample != null) _MetricPreview(sample: draftMetricSample),
-                  if (draftMetricSample != null) const SizedBox(height: 10),
-                  if (livePrediction == null)
-                    const Text('Add dimensions, load, and frequency. Optional fields still improve prediction quality when available.')
-                  else
-                    _PredictionSummary(result: livePrediction),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            FilledButton.icon(
-              onPressed: _save,
-              icon: const Icon(Icons.save),
-              label: Text(_isEditing ? 'Save changes' : 'Save sample'),
-            ),
           ],
         ),
       ),
-    );
+      _WizardStep(
+        title: 'Review & save',
+        helper: 'Confirm the values below, then save the cane.',
+        builder: () => _ReviewSummary(
+          rows: [
+            _ReviewRow('Sample', _sampleNameController.text),
+            _ReviewRow('Purchase date', _batchController.text),
+            _ReviewRow('Source', _sourceController.text),
+            _ReviewRow('Length', _displayValue(_lengthController.text, 'mm')),
+            _ReviewRow('Width', _displayValue(_widthController.text, 'mm')),
+            _ReviewRow('Thickness', _displayValue(_thicknessController.text, 'mm')),
+            _ReviewRow('Gouge', _innerGougeType),
+            _ReviewRow('Load', _displayValue(_loadController.text, 'g')),
+            _ReviewRow('Frequency', _displayValue(_frequencyController.text, 'Hz')),
+            _ReviewRow('Mass', _displayValue(_massController.text, 'g')),
+            _ReviewRow('Flexibility', _displayValue(_flexibilityController.text, 'deg')),
+            _ReviewRow('Submerged length', _displayValue(_submergedLengthController.text, 'mm')),
+            _ReviewRow('Hardness', _displayValue(_hardnessController.text, '')),
+            _ReviewRow('Photos', _photoPaths.isEmpty ? '—' : '${_photoPaths.length} attached'),
+            _ReviewRow('Notes', _notesController.text.trim().isEmpty ? '—' : _notesController.text.trim()),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  String _displayValue(String raw, String unit) {
+    final v = raw.trim();
+    if (v.isEmpty) return '—';
+    return unit.isEmpty ? v : '$v $unit';
+  }
+
+  List<String> _missingForPrediction() {
+    final missing = <String>[];
+    if (_tryParseNumber(_lengthController.text) == null) missing.add('length');
+    if (_tryParseNumber(_widthController.text) == null) missing.add('width');
+    if (_tryParseNumber(_thicknessController.text) == null) missing.add('thickness');
+    if (_tryParseNumber(_loadController.text) == null) missing.add('load');
+    final freq = _tryParseNumber(_frequencyController.text);
+    if (freq == null && _resonanceTakesHz.isEmpty) missing.add('frequency');
+    return missing;
   }
 
   PredictionResult? _draftPrediction(AppController controller) {
@@ -3625,7 +4041,7 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                     final isSelected = _selectedIndex == index;
                     return Card(
                       margin: const EdgeInsets.only(bottom: 6),
-                      color: isSelected ? const Color(0xFFE7F3F6) : null,
+                      color: isSelected ? kBrandGoldPale : null,
                       child: ListTile(
                         dense: true,
                         title: Text(
@@ -3866,10 +4282,10 @@ class _LiveCapturePanel extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isRecording ? const Color(0xFFFFF6E5) : const Color(0xFFF1F4F6),
+        color: isRecording ? kStatusWarningSoft : kSurfaceTint,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: isRecording ? const Color(0xFFE0A030) : const Color(0xFFDDE3E6),
+          color: isRecording ? kStatusWarningAccent : kSurfaceLine,
         ),
       ),
       child: Column(
@@ -3879,7 +4295,7 @@ class _LiveCapturePanel extends StatelessWidget {
             children: [
               Icon(
                 isRecording ? Icons.mic : Icons.mic_off,
-                color: isRecording ? const Color(0xFFCC5500) : Colors.grey,
+                color: isRecording ? kBrandBurgundy : kStatusNeutral,
               ),
               const SizedBox(width: 8),
               Text(
@@ -3897,11 +4313,11 @@ class _LiveCapturePanel extends StatelessWidget {
             child: LinearProgressIndicator(
               value: levelNorm,
               minHeight: 8,
-              backgroundColor: const Color(0xFFE0E5E8),
+              backgroundColor: kSurfaceLine,
               valueColor: AlwaysStoppedAnimation(
                 levelNorm > 0.7
-                    ? const Color(0xFFE0584A)
-                    : (levelNorm > 0.25 ? const Color(0xFF2A8A4A) : const Color(0xFF6EA9B5)),
+                    ? kStatusDangerAccent
+                    : (levelNorm > 0.25 ? kStatusSuccessAccent : kBrandCane),
               ),
             ),
           ),
@@ -3937,8 +4353,8 @@ class _AccuracySummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = confidencePercent >= 75
-        ? const Color(0xFF2A8A4A)
-        : (confidencePercent >= 45 ? const Color(0xFFE0A030) : const Color(0xFFE0584A));
+        ? kStatusSuccessAccent
+        : (confidencePercent >= 45 ? kStatusWarningAccent : kStatusDangerAccent);
     final tip = count == 0
         ? 'Record one or more takes to start building confidence.'
         : count == 1
@@ -3948,9 +4364,9 @@ class _AccuracySummary extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF6F8F9),
+        color: kSurfaceTint,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFDDE3E6)),
+        border: Border.all(color: kSurfaceLine),
       ),
       child: Row(
         children: [
@@ -3993,7 +4409,7 @@ class _TakeBarsPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final bg = Paint()..color = const Color(0xFFE9EEF1);
+    final bg = Paint()..color = kSurfaceTint;
     canvas.drawRRect(
       RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(10)),
       bg,
@@ -4016,7 +4432,7 @@ class _TakeBarsPainter extends CustomPainter {
       final y = size.height - h;
       final selected = selectedIndex == i;
 
-      final paint = Paint()..color = selected ? const Color(0xFF16697A) : const Color(0xFF6EA9B5);
+      final paint = Paint()..color = selected ? kBrandBurgundy : kBrandCane;
       canvas.drawRRect(
         RRect.fromRectAndRadius(Rect.fromLTWH(x, y, barWidth, h), const Radius.circular(6)),
         paint,
@@ -4169,7 +4585,7 @@ class _CaneCard extends StatelessWidget {
                     margin: const EdgeInsets.only(right: 8),
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: isReviewed! ? const Color(0xFF2E7D32) : const Color(0xFFF57C00),
+                      color: isReviewed! ? kStatusSuccess : kStatusWarning,
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
@@ -4266,17 +4682,9 @@ class _ReedCard extends StatelessWidget {
                   ),
                 ),
                 if (evaluation.goldStandard)
-                  Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFC89B1F),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'Gold Standard',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11),
-                    ),
+                  const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: _GoldStandardBadge(),
                   ),
                 Container(
                   margin: const EdgeInsets.only(right: 8),
@@ -4346,7 +4754,7 @@ class _PendingReedCard extends StatelessWidget {
             children: [
             Row(
               children: [
-                const Icon(Icons.schedule, color: Color(0xFFF57C00)),
+                const Icon(Icons.schedule, color: kStatusWarning),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -4357,7 +4765,7 @@ class _PendingReedCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF57C00),
+                    color: kStatusWarning,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: const Text(
@@ -4654,18 +5062,18 @@ String _formatDate(DateTime value) {
 
 Color _scoreMarkerColor(double score) {
   if (score >= 8.5) {
-    return const Color(0xFF1B5E20);
+    return kStatusSuccess;
   }
   if (score >= 7.5) {
-    return const Color(0xFF2E7D32);
+    return kStatusSuccessAccent;
   }
   if (score >= 6.0) {
-    return const Color(0xFFF9A825);
+    return kStatusWarning;
   }
   if (score >= 4.5) {
-    return const Color(0xFFEF6C00);
+    return kStatusWarningAccent;
   }
-  return const Color(0xFFC62828);
+  return kStatusDanger;
 }
 
 double? _tryParseNumber(String raw) {
@@ -4839,3 +5247,659 @@ Future<String?> _readPickedFileAsString(PlatformFile file) async {
   }
   return File(path).readAsString();
 }
+
+// ---------------------------------------------------------------------------
+// Branding & wizard helpers
+// ---------------------------------------------------------------------------
+
+class _BrandLogoMark extends StatelessWidget {
+  const _BrandLogoMark({this.size = 32});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size * 0.18),
+      child: Image.asset(
+        'assets/logo.png',
+        height: size,
+        width: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          height: size,
+          width: size,
+          color: kBrandBurgundy,
+          alignment: Alignment.center,
+          child: const Icon(Icons.music_note, color: kBrandGoldLight, size: 18),
+        ),
+      ),
+    );
+  }
+}
+
+class _WizardStep {
+  _WizardStep({
+    required this.title,
+    required this.builder,
+    this.helper,
+    this.optional = false,
+    this.canAdvance,
+  });
+
+  final String title;
+  final String? helper;
+  final Widget Function() builder;
+  final bool optional;
+  final bool Function()? canAdvance;
+}
+
+class _PredictionStatus extends StatelessWidget {
+  const _PredictionStatus({required this.missing, required this.result});
+
+  final List<String> missing;
+  final PredictionResult? result;
+
+  @override
+  Widget build(BuildContext context) {
+    if (missing.isEmpty && result != null) {
+      return Row(
+        children: const [
+          Icon(Icons.check_circle, color: kStatusSuccess, size: 18),
+          SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Prediction ready — see details below.',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      );
+    }
+    if (missing.isNotEmpty) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.hourglass_bottom, color: kBrandGold, size: 18),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Waiting on ${missing.length} input${missing.length == 1 ? '' : 's'}: ${missing.join(', ')}.',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      );
+    }
+    return const Text(
+      'Live prediction will appear as you enter data.',
+      style: TextStyle(fontWeight: FontWeight.w600),
+    );
+  }
+}
+
+class _ReviewRow {
+  const _ReviewRow(this.label, this.value);
+  final String label;
+  final String value;
+}
+
+class _ReviewSummary extends StatelessWidget {
+  const _ReviewSummary({required this.rows});
+  final List<_ReviewRow> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        children: rows.map((row) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 130,
+                  child: Text(
+                    row.label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+                Expanded(child: Text(row.value)),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class _SettingsTab extends StatelessWidget {
+  const _SettingsTab();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.watch<ThemeController>();
+    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      children: [
+        const _PhilosophyHeader(),
+        const SizedBox(height: 18),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.palette_outlined, color: theme.colorScheme.primary),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Appearance',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Choose the visual theme that frames your reed-making notes. '
+                  'Switching themes restyles the navigation, cards, buttons and dialogs.',
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.35),
+                ),
+                const SizedBox(height: 14),
+                ...AppThemeVariant.values.map((variant) {
+                  final selected = controller.variant == variant;
+                  return _ThemeOptionTile(
+                    variant: variant,
+                    selected: selected,
+                    onTap: () => controller.setVariant(variant),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.info_outline, color: theme.colorScheme.primary),
+                    const SizedBox(width: 10),
+                    Text(
+                      'About ReedLab',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'ReedLab is a measurement journal for bassoon reed makers. Track each piece '
+                  'of cane from purchase through every reed it becomes, capture the physical '
+                  'fingerprint of your best players, and use that profile to choose future '
+                  'cane with confidence.',
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'All data lives locally in your browser or device. Use the Reeds tab to '
+                  'export or import a JSON backup.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.science_outlined, color: theme.colorScheme.primary),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Understanding ARI',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'ARI stands for Are\'s Reed Index — a single number that '
+                  'combines a cane\'s stiffness with its tapped pitch so you can compare '
+                  'pieces on one axis instead of two.',
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                _AriFormulaBlock(
+                  primary: theme.colorScheme.primary,
+                  onSurface: theme.colorScheme.onSurface,
+                  surface: theme.colorScheme.surfaceContainerHigh,
+                  outline: theme.colorScheme.outline,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Flexibility is measured in degrees of deflection under a known load. '
+                  'Tone index is a Lauritzen scale (0–36) where the tapped pitch G♯ is 0 '
+                  '(highest, densest cane) and B is 36 (lowest, softest cane).',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.78),
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Philosophy',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'The premise is simple: a cane\'s tonality (its tapped pitch) and its '
+                  'flexibility together describe how the material will behave once it '
+                  'becomes a reed. Combining the two into a single index lets you '
+                  'predict a piece of cane\'s suitability for a great reed before you '
+                  'invest the hours of scraping. By judging cane with ARI up front, the '
+                  'bassoonist hopes to cut down on unsuccessful reeds — and the time, '
+                  'money and frustration they cost.',
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'How ReedLab grades it',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _AriBandLegend(theme: theme),
+                const SizedBox(height: 12),
+                Text(
+                  'These bands are a starting point — the Behavior tab learns your own '
+                  'sweet spot from the reeds you flag as successful, and the green zone '
+                  'on the behavior map shows the ARI/flexibility neighbourhood your best '
+                  'reeds cluster in.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.78),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AriFormulaBlock extends StatelessWidget {
+  const _AriFormulaBlock({
+    required this.primary,
+    required this.onSurface,
+    required this.surface,
+    required this.outline,
+  });
+
+  final Color primary;
+  final Color onSurface;
+  final Color surface;
+  final Color outline;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: outline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'ARI = flexibility (°)  −  tone index (Lauritzen 0–36)',
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w700,
+              color: primary,
+              fontSize: 13.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Lower (more negative) ARI = stiffer cane for its pitch — generally better.',
+            style: TextStyle(
+              color: onSurface.withValues(alpha: 0.75),
+              fontSize: 12.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AriBandLegend extends StatelessWidget {
+  const _AriBandLegend({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = const [
+      ('ARI ≤ −6', 'A+ Excellent', kStatusSuccess),
+      ('−6 < ARI < 0', 'A  Very Good', kStatusSuccessAccent),
+      ('0 ≤ ARI ≤ 4', 'B  Acceptable', kStatusWarning),
+      ('4 < ARI < 10', 'C  Weak match', kStatusWarningAccent),
+      ('ARI ≥ 10', 'D  Poor', kStatusDanger),
+    ];
+    return Column(
+      children: rows.map((r) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: r.$3,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 120,
+                child: Text(
+                  r.$1,
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12.5,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  r.$2,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: r.$3,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _ThemeOptionTile extends StatelessWidget {
+  const _ThemeOptionTile({
+    required this.variant,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppThemeVariant variant;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final swatch = _swatchFor(variant);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.outline,
+              width: selected ? 1.6 : 1,
+            ),
+            color: selected
+                ? theme.colorScheme.primary.withValues(alpha: 0.06)
+                : Colors.transparent,
+          ),
+          child: Row(
+            children: [
+              _SwatchStrip(colors: swatch),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      variant.label,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      variant.description,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                selected
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked,
+                color: selected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.outline,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Color> _swatchFor(AppThemeVariant variant) {
+    switch (variant) {
+      case AppThemeVariant.classic:
+        return const [Color(0xFF5C1A1B), Color(0xFFC9A24A), Color(0xFFFAF3E7)];
+      case AppThemeVariant.dark:
+        return const [Color(0xFF1B1418), Color(0xFFD9B26A), Color(0xFF9C4A4C)];
+      case AppThemeVariant.enchantedForest:
+        return const [Color(0xFF2F4A30), Color(0xFFB8842B), Color(0xFFEFEAD6)];
+      case AppThemeVariant.rococo:
+        return const [Color(0xFF8E3A66), Color(0xFFB89858), Color(0xFFFCEFEF)];
+    }
+  }
+}
+
+class _SwatchStrip extends StatelessWidget {
+  const _SwatchStrip({required this.colors});
+
+  final List<Color> colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: 46,
+        height: 32,
+        child: Row(
+          children: colors
+              .map((c) => Expanded(child: Container(color: c)))
+              .toList(),
+        ),
+      ),
+    );
+  }
+}
+
+/// Recognisable accolade badge shown wherever a Gold Standard reed is surfaced.
+///
+/// The badge intentionally renders with its own gold gradient and dark
+/// burgundy text regardless of the surrounding theme so the accolade reads
+/// consistently across Classic, Midnight, Forest and Rococo modes.
+class _GoldStandardBadge extends StatelessWidget {
+  const _GoldStandardBadge({this.compact = false, this.label = 'Gold Standard'});
+  /// Compact variant: just the star + short label, smaller padding.
+  final bool compact;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final fontSize = compact ? 10.0 : 11.5;
+    final iconSize = compact ? 12.0 : 14.0;
+    final padH = compact ? 7.0 : 10.0;
+    final padV = compact ? 3.0 : 4.5;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFF5D67A), // pale highlight
+            Color(0xFFE2B24A), // body gold
+            Color(0xFFB8842B), // burnished edge
+          ],
+          stops: [0.0, 0.55, 1.0],
+        ),
+        border: Border.all(
+          color: const Color(0xFF8B6420).withValues(alpha: 0.55),
+          width: 0.8,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFB8842B).withValues(alpha: 0.45),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.star_rounded,
+            size: iconSize,
+            color: const Color(0xFF3A1F08),
+          ),
+          SizedBox(width: compact ? 3 : 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: const Color(0xFF3A1F08),
+              fontWeight: FontWeight.w800,
+              fontSize: fontSize,
+              letterSpacing: compact ? 0.2 : 0.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Dashboard summary pill highlighting how many reeds in the current window
+/// achieved Gold Standard status.
+class _GoldStandardSummary extends StatelessWidget {
+  const _GoldStandardSummary({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFFFFF1C8).withValues(alpha: 0.55),
+            const Color(0xFFE8C977).withValues(alpha: 0.35),
+          ],
+        ),
+        border: Border.all(
+          color: const Color(0xFFB8842B).withValues(alpha: 0.55),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          const _GoldStandardBadge(compact: true, label: 'Gold'),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '$count Gold Standard reed${count == 1 ? '' : 's'} in this window',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF3A1F08),
+              ),
+            ),
+          ),
+          Icon(Icons.workspace_premium_rounded,
+              color: const Color(0xFF8B6420).withValues(alpha: 0.85)),
+        ],
+      ),
+    );
+  }
+}
+
+
+
+
