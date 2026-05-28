@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/cane.dart';
 import '../models/reed.dart';
@@ -67,21 +68,6 @@ class _ShellPageState extends State<ShellPage> {
         ];
 
         return Scaffold(
-          extendBodyBehindAppBar: true,
-          appBar: AppBar(
-            title: const Text('ReedLab'),
-            actions: [
-              if (controller.errorMessage != null)
-                IconButton(
-                  icon: const Icon(Icons.warning_amber_rounded),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(controller.errorMessage!)),
-                    );
-                  },
-                ),
-            ],
-          ),
           body: Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -91,7 +77,27 @@ class _ShellPageState extends State<ShellPage> {
                     const [kBrandParchment, kBrandParchmentDeep, kSurfaceTint],
               ),
             ),
-            child: SafeArea(child: pages[_tab]),
+            child: SafeArea(
+              child: Stack(
+                children: [
+                  Positioned.fill(child: pages[_tab]),
+                  if (controller.errorMessage != null)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: IconButton(
+                        icon: const Icon(Icons.warning_amber_rounded),
+                        color: Theme.of(context).colorScheme.error,
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(controller.errorMessage!)),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _tab,
@@ -220,6 +226,8 @@ class _DashboardTabState extends State<_DashboardTab> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
+        const _HomeWordmarkHeader(),
+        const SizedBox(height: 12),
         _RangeSelector(
           range: _range,
           onChanged: (value) => setState(() => _range = value),
@@ -229,7 +237,10 @@ class _DashboardTabState extends State<_DashboardTab> {
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Text(
             'Showing data from the ${_range.longLabel}.',
-            style: TextStyle(color: Colors.black.withValues(alpha: 0.6), fontSize: 12),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
+              fontSize: 12,
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -395,24 +406,14 @@ class _PhilosophyHeader extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const _BrandLogoMark(size: 56),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'ReedLab',
-                      style: TextStyle(
-                        color: kBrandGoldLight.withValues(alpha: 0.95),
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 2.0,
-                        fontSize: 12,
-                      ),
-                    ),
                     const SizedBox(height: 4),
                     const Text(
-                      'It\'s about a Predictable cane, not a perfect cane.',
+                      'It\'s about a predictable cane, not a perfect cane.',
                       style: TextStyle(
                         color: kBrandParchment,
                         fontWeight: FontWeight.w800,
@@ -547,7 +548,11 @@ class _CountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Boost saturation/lightness for legibility on dark surfaces.
+    final accent = isDark ? Color.lerp(color, Colors.white, 0.35)! : color;
+    final onSurface = scheme.onSurface;
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -556,14 +561,14 @@ class _CountCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: color, size: 18),
+            Icon(icon, color: accent, size: 18),
             const SizedBox(height: 6),
             Text(
               value,
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 24,
-                color: color,
+                color: accent,
               ),
             ),
             const SizedBox(height: 2),
@@ -571,7 +576,7 @@ class _CountCard extends StatelessWidget {
               label,
               style: TextStyle(
                 fontSize: 11.5,
-                color: onSurface.withValues(alpha: 0.7),
+                color: onSurface.withValues(alpha: 0.78),
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -2978,10 +2983,11 @@ class _AddCanePageState extends State<AddCanePage> {
                         label: const Text('Back'),
                       ),
                     const Spacer(),
-                    if (current.optional && !isLast)
-                      TextButton(
+                    if (!isLast)
+                      TextButton.icon(
                         onPressed: () => setState(() => _step++),
-                        child: const Text('Skip'),
+                        icon: const Icon(Icons.skip_next, size: 18),
+                        label: Text(current.optional ? 'Skip' : 'Skip for now'),
                       ),
                     const SizedBox(width: 8),
                     if (!isLast)
@@ -3179,6 +3185,7 @@ class _AddCanePageState extends State<AddCanePage> {
         helper: 'Optional — skip if you don\'t measure it.',
         optional: true,
         builder: () => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _NumberInput(
               controller: _flexibilityController,
@@ -3193,6 +3200,8 @@ class _AddCanePageState extends State<AddCanePage> {
                 setState(() {});
               },
             ),
+            const SizedBox(height: 12),
+            const _FlexibilityHelpCard(),
           ],
         ),
       ),
@@ -5252,6 +5261,93 @@ Future<String?> _readPickedFileAsString(PlatformFile file) async {
 // Branding & wizard helpers
 // ---------------------------------------------------------------------------
 
+/// Explainer + external link shown under the Flexibility wizard step.
+///
+/// Flexibility is the deflection-under-load reading produced by a Lauritzen-
+/// style flex meter. New users often have not encountered the device, so we
+/// link to a demonstration video and make clear ReedLab is not affiliated.
+class _FlexibilityHelpCard extends StatelessWidget {
+  const _FlexibilityHelpCard();
+
+  static final Uri _videoUri =
+      Uri.parse('https://www.youtube.com/watch?v=8QEzAyQ4PGc');
+
+  Future<void> _open(BuildContext context) async {
+    final ok = await launchUrl(_videoUri, mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open ${_videoUri.toString()}')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.help_outline, size: 18, color: scheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                'What is flexibility?',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: scheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Flexibility is how many degrees a tube of cane twists under a '
+            'known load on a Lauritzen-style flex meter. Bigger angle = '
+            'softer / more flexible cane.',
+            style: TextStyle(
+              color: scheme.onSurface.withValues(alpha: 0.85),
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () => _open(context),
+            icon: const Icon(Icons.play_circle_outline, size: 18),
+            label: const Text('Watch a demonstration on YouTube'),
+            style: TextButton.styleFrom(
+              foregroundColor: scheme.primary,
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'ReedLab is not affiliated with or endorsed by the makers of any '
+            'flex-measurement device. The app simply uses the data such a tool '
+            'provides to help guide your reed-making process.',
+            style: TextStyle(
+              color: scheme.onSurface.withValues(alpha: 0.65),
+              fontSize: 11.5,
+              fontStyle: FontStyle.italic,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _BrandLogoMark extends StatelessWidget {
   const _BrandLogoMark({this.size = 32});
   final double size;
@@ -5271,6 +5367,75 @@ class _BrandLogoMark extends StatelessWidget {
           color: kBrandBurgundy,
           alignment: Alignment.center,
           child: const Icon(Icons.music_note, color: kBrandGoldLight, size: 18),
+        ),
+      ),
+    );
+  }
+}
+
+/// Decorative gold "ReedLab" wordmark used on the Home screen and About card.
+///
+/// Falls back to a stylised text wordmark if the bundled asset is missing,
+/// so the app remains presentable until the artwork is dropped in place.
+class _HomeWordmarkHeader extends StatelessWidget {
+  const _HomeWordmarkHeader({this.maxHeight = 64});
+
+  final double maxHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight, maxWidth: 280),
+          child: Image.asset(
+            'assets/reedlab_wordmark.png',
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => _WordmarkFallback(
+              height: maxHeight,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WordmarkFallback extends StatelessWidget {
+  const _WordmarkFallback({required this.height});
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: height,
+      child: Center(
+        child: ShaderMask(
+          shaderCallback: (rect) => const LinearGradient(
+            colors: [
+              Color(0xFFF5D67A),
+              Color(0xFFE2B24A),
+              Color(0xFFB8842B),
+              Color(0xFFE2B24A),
+              Color(0xFFF5D67A),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ).createShader(rect),
+          child: Text(
+            'ReedLab',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: height * 0.55,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.5,
+              fontStyle: FontStyle.italic,
+              shadows: const [
+                Shadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 2)),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -5393,47 +5558,10 @@ class _SettingsTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
+        const _HomeWordmarkHeader(maxHeight: 56),
+        const SizedBox(height: 8),
         const _PhilosophyHeader(),
         const SizedBox(height: 18),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.palette_outlined, color: theme.colorScheme.primary),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Appearance',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Choose the visual theme that frames your reed-making notes. '
-                  'Switching themes restyles the navigation, cards, buttons and dialogs.',
-                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.35),
-                ),
-                const SizedBox(height: 14),
-                ...AppThemeVariant.values.map((variant) {
-                  final selected = controller.variant == variant;
-                  return _ThemeOptionTile(
-                    variant: variant,
-                    selected: selected,
-                    onTap: () => controller.setVariant(variant),
-                  );
-                }),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
         Card(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
@@ -5558,6 +5686,45 @@ class _SettingsTab extends StatelessWidget {
                     height: 1.4,
                   ),
                 ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.palette_outlined, color: theme.colorScheme.primary),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Appearance',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Choose the visual theme that frames your reed-making notes. '
+                  'Switching themes restyles the navigation, cards, buttons and dialogs.',
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.35),
+                ),
+                const SizedBox(height: 14),
+                ...AppThemeVariant.values.map((variant) {
+                  final selected = controller.variant == variant;
+                  return _ThemeOptionTile(
+                    variant: variant,
+                    selected: selected,
+                    onTap: () => controller.setVariant(variant),
+                  );
+                }),
               ],
             ),
           ),

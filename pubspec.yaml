@@ -40,6 +40,7 @@ dependencies:
   audioplayers: ^6.6.0
   shared_preferences: ^2.5.5
   file_picker: ^11.0.2
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:
@@ -64,6 +65,8 @@ flutter:
 
   assets:
     - assets/logo.png
+    # Drop the gold "ReedLab" wordmark PNG at this path and uncomment to bundle it.
+    - assets/reedlab_wordmark.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:
