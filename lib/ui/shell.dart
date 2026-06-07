@@ -447,7 +447,7 @@ class _PhilosophyHeader extends StatelessWidget {
             child: const Text(
               'Developed using a combination of well known methods, and the craft and research from professional bassoonist '
               'Are Bøen Lauritzen, who has made his own reeds throughout a long '
-              'career as a working bassoon player, and developed the ARI method.',
+              'career as a working bassoon player, and developed the ARE method.',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 12.5,
@@ -1071,7 +1071,7 @@ class _BehaviorTabState extends State<_BehaviorTab> {
                   children: [
                     Expanded(
                       child: Text(
-                        '${entry.cane.sampleName} - ${entry.cane.purchaseDateLabel}',
+                        '${entry.cane.sampleName} - ${entry.cane.purchaseVintageLabel}',
                         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
                       ),
                     ),
@@ -1096,7 +1096,7 @@ class _BehaviorTabState extends State<_BehaviorTab> {
                 Text('Grade ${ReedEvaluation.gradeForScore(entry.score)} | ${entry.score.toStringAsFixed(1)}/10'),
                 Text('Tone/Frequency: ${entry.cane.naturalFrequencyHz.toStringAsFixed(1)} Hz'),
                 Text('Flexibility: ${entry.cane.flexibilityDeg.toStringAsFixed(2)} deg'),
-                Text('ARI: ${entry.cane.ari?.toStringAsFixed(1) ?? 'n/a'}'),
+                Text('ARE: ${entry.cane.ari?.toStringAsFixed(1) ?? 'n/a'}'),
                 Text('Buoyancy: ${entry.cane.buoyancyPercent?.toStringAsFixed(1) ?? 'n/a'}%'),
                 const SizedBox(height: 10),
                 if (allPhotos.isNotEmpty)
@@ -1148,7 +1148,7 @@ class _BehaviorTabState extends State<_BehaviorTab> {
                 final entry = item.entry;
                 final photos = [...entry.cane.photoPaths, ...entry.evaluation.photoPaths];
                 final subtitle =
-                    '${entry.cane.purchaseDateLabel} | ${ReedEvaluation.gradeForScore(entry.score)} | ${entry.cane.naturalFrequencyHz.toStringAsFixed(1)} Hz | Flex ${entry.cane.flexibilityDeg.toStringAsFixed(1)}';
+                    '${entry.cane.purchaseVintageLabel} | ${ReedEvaluation.gradeForScore(entry.score)} | ${entry.cane.naturalFrequencyHz.toStringAsFixed(1)} Hz';
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
@@ -1733,7 +1733,7 @@ class _FavoredCompromiseCard extends StatelessWidget {
       if (p.mass != null)
         _TargetRowData('Mass', '${p.mass!.toStringAsFixed(2)} g'),
       if (p.ari != null)
-        _TargetRowData('ARI', p.ari!.toStringAsFixed(1)),
+        _TargetRowData('ARE', p.ari!.toStringAsFixed(1)),
       if (p.buoyancy != null)
         _TargetRowData('Buoyancy', '${p.buoyancy!.toStringAsFixed(1)}%'),
     ];
@@ -2047,7 +2047,7 @@ _PitchValue _pitchFromFrequency(double frequency) {
 
 _MetricStatus _ariStatus(double? ari) {
   if (ari == null) {
-    return const _MetricStatus(label: 'No ARI (missing flexibility)', color: kStatusNeutral);
+    return const _MetricStatus(label: 'No ARE (missing flexibility)', color: kStatusNeutral);
   }
   if (ari <= -6) {
     return const _MetricStatus(label: 'A+ Excellent', color: kStatusSuccess);
@@ -2086,21 +2086,21 @@ String _combinedPredictionMessage(double ari, double buoyancyPercent) {
   final buoyancyGood = buoyancyPercent >= 81 && buoyancyPercent <= 85;
 
   if (ariPoor && !buoyancyGood) {
-    return 'Weak candidate: ARI is in poor range (+10 or more) and density proxy is off target.';
+    return 'Weak candidate: ARE is in poor range (+10 or more) and density proxy is off target.';
   }
   if (ariPoor && buoyancyGood) {
-    return 'Density is good, but ARI is in poor range (+10 or more). Proceed with caution.';
+    return 'Density is good, but ARE is in poor range (+10 or more). Proceed with caution.';
   }
   if (ariGood && buoyancyGood) {
-    return 'Excellent candidate: ARI balance and density profile are both in target range.';
+    return 'Excellent candidate: ARE balance and density profile are both in target range.';
   }
   if (ariGood && !buoyancyGood) {
-    return 'Excellent ARI balance, but density mismatch. Proceed with caution.';
+    return 'Excellent ARE balance, but density mismatch. Proceed with caution.';
   }
   if (!ariGood && buoyancyGood) {
     return 'Density is strong, but flexibility/resonance balance is weaker than target.';
   }
-  return 'Both ARI and density are outside preferred range for this profile.';
+  return 'Both ARE and density are outside preferred range for this profile.';
 }
 
 class _CaneTab extends StatefulWidget {
@@ -2815,7 +2815,7 @@ class _AddCanePageState extends State<AddCanePage> {
     if (sample != null) {
       _sampleNameController.text = sample.sampleName;
       _purchaseDate = sample.purchaseDate;
-      _batchController.text = sample.purchaseDateLabel;
+      _batchController.text = sample.purchaseDate.year.toString().padLeft(4, '0');
       _sourceController.text = sample.source;
       _lengthController.text = sample.lengthMm.toStringAsFixed(2);
       _widthController.text = sample.widthMm.toStringAsFixed(2);
@@ -3037,12 +3037,12 @@ class _AddCanePageState extends State<AddCanePage> {
         canAdvance: () => _sampleNameController.text.trim().isNotEmpty,
       ),
       _WizardStep(
-        title: 'Date of purchase',
-        helper: 'When did you receive this cane?',
+        title: 'Vintage year',
+        helper: 'Choose the production year/vintage for this cane.',
         builder: () => TextFormField(
           controller: _batchController,
           readOnly: true,
-          decoration: const InputDecoration(labelText: 'Date of purchase'),
+          decoration: const InputDecoration(labelText: 'Vintage year'),
           onTap: _pickPurchaseDate,
         ),
         canAdvance: () => _batchController.text.trim().isNotEmpty,
@@ -3079,7 +3079,7 @@ class _AddCanePageState extends State<AddCanePage> {
       ),
       _WizardStep(
         title: 'Length (mm)',
-        helper: 'Measured tip-to-tip on the gouged blank.',
+        helper: 'Measured tip-to-tip on the gouged blank. Common standards: 120, 118, 116 mm.',
         builder: () => Column(
           children: [
             _NumberInput(
@@ -3088,7 +3088,7 @@ class _AddCanePageState extends State<AddCanePage> {
               onChanged: (_) => setState(() {}),
             ),
             _ValuePresetChips(
-              values: controller.lengthHistory,
+              values: _presetValues(controller.lengthHistory, const [120, 118, 116]),
               onSelected: (value) {
                 _lengthController.text = value.toStringAsFixed(2);
                 setState(() {});
@@ -3100,7 +3100,7 @@ class _AddCanePageState extends State<AddCanePage> {
       ),
       _WizardStep(
         title: 'Width (mm)',
-        helper: 'Width at the widest point of the gouge.',
+        helper: 'Width at the widest point of the gouge. Common standards: 15, 16, 17, 18 mm.',
         builder: () => Column(
           children: [
             _NumberInput(
@@ -3109,7 +3109,7 @@ class _AddCanePageState extends State<AddCanePage> {
               onChanged: (_) => setState(() {}),
             ),
             _ValuePresetChips(
-              values: controller.widthHistory,
+              values: _presetValues(controller.widthHistory, const [15, 16, 17, 18]),
               onSelected: (value) {
                 _widthController.text = value.toStringAsFixed(2);
                 setState(() {});
@@ -3360,7 +3360,7 @@ class _AddCanePageState extends State<AddCanePage> {
         builder: () => _ReviewSummary(
           rows: [
             _ReviewRow('Sample', _sampleNameController.text),
-            _ReviewRow('Purchase date', _batchController.text),
+            _ReviewRow('Vintage year', _batchController.text),
             _ReviewRow('Source', _sourceController.text),
             _ReviewRow('Length', _displayValue(_lengthController.text, 'mm')),
             _ReviewRow('Width', _displayValue(_widthController.text, 'mm')),
@@ -3384,6 +3384,21 @@ class _AddCanePageState extends State<AddCanePage> {
     final v = raw.trim();
     if (v.isEmpty) return '—';
     return unit.isEmpty ? v : '$v $unit';
+  }
+
+  List<double> _presetValues(List<double> historyValues, List<double> defaults) {
+    final presets = <double>[];
+    for (final value in defaults) {
+      if (!presets.any((existing) => (existing - value).abs() < 0.0001)) {
+        presets.add(value);
+      }
+    }
+    for (final value in historyValues) {
+      if (!presets.any((existing) => (existing - value).abs() < 0.0001)) {
+        presets.add(value);
+      }
+    }
+    return presets;
   }
 
   List<String> _missingForPrediction() {
@@ -3482,6 +3497,7 @@ class _AddCanePageState extends State<AddCanePage> {
       initialDate: _purchaseDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
+      initialDatePickerMode: DatePickerMode.year,
     );
 
     if (selected == null) {
@@ -3489,8 +3505,8 @@ class _AddCanePageState extends State<AddCanePage> {
     }
 
     setState(() {
-      _purchaseDate = selected;
-      _batchController.text = '${selected.year.toString().padLeft(4, '0')}-${selected.month.toString().padLeft(2, '0')}-${selected.day.toString().padLeft(2, '0')}';
+      _purchaseDate = DateTime(selected.year, 1, 1);
+      _batchController.text = selected.year.toString().padLeft(4, '0');
     });
   }
 
@@ -3724,7 +3740,7 @@ class _AddReedEvaluationPageState extends State<AddReedEvaluationPage> {
                   .map(
                     (sample) => DropdownMenuItem(
                       value: sample.id,
-                      child: Text('${sample.sampleName} - ${sample.purchaseDateLabel}'),
+                      child: Text('${sample.sampleName} - ${sample.purchaseVintageLabel}'),
                     ),
                   )
                   .toList(),
@@ -4471,7 +4487,7 @@ class _PredictionSummary extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'ARE\'S REED INDEX',
+          'ACCEPTABLE REED ESTIMATE (ARE)',
           style: TextStyle(
             fontWeight: FontWeight.w700,
             color: ariStatus.color,
@@ -4500,7 +4516,7 @@ class _PredictionSummary extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text('Eigenfrequency score: ${result.referenceAverages['lauritzenToneIndex']?.toStringAsFixed(1) ?? 'n/a'}'),
-        Text('Reference ARI: ${result.referenceAverages['ari']?.toStringAsFixed(1) ?? 'n/a'}'),
+        Text('Reference ARE: ${result.referenceAverages['ari']?.toStringAsFixed(1) ?? 'n/a'}'),
         Text('Reference buoyancy: ${result.referenceAverages['buoyancyPercent']?.toStringAsFixed(1) ?? 'n/a'}%'),
         if (ari != null && buoyancy != null)
           Padding(
@@ -4531,12 +4547,12 @@ class _MetricPreview extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Live ARI Preview',
+          'Live ARE Preview',
           style: TextStyle(fontWeight: FontWeight.w700, color: ariStatus.color),
         ),
         const SizedBox(height: 4),
         Text(
-          ari == null ? 'ARI: add flexibility and frequency' : 'ARI: ${ari.toStringAsFixed(0)} (${ariStatus.label})',
+          ari == null ? 'ARE: add flexibility and frequency' : 'ARE: ${ari.toStringAsFixed(0)} (${ariStatus.label})',
           style: TextStyle(fontWeight: FontWeight.w700, color: ariStatus.color),
         ),
         if (sample.naturalFrequencyHz > 0)
@@ -4585,7 +4601,7 @@ class _CaneCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    '${sample.sampleName} - ${sample.purchaseDateLabel}',
+                    '${sample.sampleName} - ${sample.purchaseVintageLabel}',
                     style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
                   ),
                 ),
@@ -4621,15 +4637,8 @@ class _CaneCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text('Source: ${sample.source}'),
-            Text('L/W/T ${sample.lengthMm.toStringAsFixed(2)}/${sample.widthMm.toStringAsFixed(2)}/${sample.thicknessMm.toStringAsFixed(3)} mm'),
-            if (sample.thicknessReadingsMm.length > 1)
-              Text('Thickness variants: ${sample.thicknessReadingsMm.skip(1).map((value) => value.toStringAsFixed(3)).join(' / ')} mm'),
-            Text(sample.flexibilityDeg > 0
-                ? 'Flex ${sample.flexibilityDeg.toStringAsFixed(1)} deg at ${sample.loadG.toStringAsFixed(1)} g | Stiffness ${sample.relativeStiffness.toStringAsFixed(2)}'
-                : 'Flexibility test not recorded'),
-            Text('Resonance ${sample.naturalFrequencyHz.toStringAsFixed(1)} Hz | Eigenfrequency score ${sample.eigenfrequencyScore.toStringAsFixed(1)}'),
-            Text('ARI ${sample.ari?.toStringAsFixed(1) ?? 'n/a'} (${_ariStatus(sample.ari).label})'),
-            Text('Buoyancy ${sample.buoyancyPercent?.toStringAsFixed(1) ?? 'n/a'}% (${_buoyancyStatus(sample.buoyancyPercent).label})'),
+            Text('Size ${sample.lengthMm.toStringAsFixed(1)} × ${sample.widthMm.toStringAsFixed(1)} mm'),
+            Text('ARE ${sample.ari?.toStringAsFixed(1) ?? 'n/a'} (${_ariStatus(sample.ari).label})'),
             if (sample.photoPaths.isNotEmpty) ...[
               const SizedBox(height: 6),
               _ThumbnailRow(paths: sample.photoPaths),
@@ -4686,7 +4695,7 @@ class _ReedCard extends StatelessWidget {
                 ),
                 Expanded(
                   child: Text(
-                    cane == null ? 'Unknown cane sample' : '${cane!.sampleName} - ${cane!.purchaseDateLabel}',
+                    cane == null ? 'Unknown cane sample' : '${cane!.sampleName} - ${cane!.purchaseVintageLabel}',
                     style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
                   ),
                 ),
@@ -4726,9 +4735,10 @@ class _ReedCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text('Overall grade ${ReedEvaluation.gradeForScore(evaluation.overallScore)} (${evaluation.overallScore.toStringAsFixed(1)} / 10)'),
-            Text('R:${evaluation.response} S:${evaluation.stability} T:${evaluation.tone} I:${evaluation.intonation} F:${evaluation.flexibility} P:${evaluation.projection} Res:${evaluation.resistance}'),
+            if (cane != null)
+              Text('ARE ${cane!.ari?.toStringAsFixed(1) ?? 'n/a'} (${_ariStatus(cane!.ari).label})'),
             const SizedBox(height: 4),
-            const Text('Tap card to open full stats', style: TextStyle(fontSize: 12)),
+            const Text('Tap for full reed and cane stats', style: TextStyle(fontSize: 12)),
             if (evaluation.comment.isNotEmpty) Text(evaluation.comment),
             if (photos.isNotEmpty) ...[
               const SizedBox(height: 6),
@@ -4767,7 +4777,7 @@ class _PendingReedCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '${sample.sampleName} - ${sample.purchaseDateLabel}',
+                    '${sample.sampleName} - ${sample.purchaseVintageLabel}',
                     style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
                   ),
                 ),
@@ -4786,7 +4796,7 @@ class _PendingReedCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text('Source: ${sample.source}'),
-            Text('Resonance ${sample.naturalFrequencyHz.toStringAsFixed(1)} Hz | Flex ${sample.flexibilityDeg.toStringAsFixed(1)} deg'),
+            Text('Size ${sample.lengthMm.toStringAsFixed(1)} × ${sample.widthMm.toStringAsFixed(1)} mm'),
             if (photos.isNotEmpty) ...[
               const SizedBox(height: 6),
               _ThumbnailRow(paths: photos),
@@ -4813,7 +4823,7 @@ class _CaneStatsExpansion extends StatelessWidget {
       child: ExpansionTile(
         leading: const Icon(Icons.analytics_outlined),
         title: const Text('Cane stats'),
-        subtitle: Text('${sample.sampleName} - ${sample.purchaseDateLabel}'),
+        subtitle: Text('${sample.sampleName} - ${sample.purchaseVintageLabel}'),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         expandedCrossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -4823,7 +4833,7 @@ class _CaneStatsExpansion extends StatelessWidget {
               ? 'Flex ${sample.flexibilityDeg.toStringAsFixed(1)} deg at ${sample.loadG.toStringAsFixed(1)} g | Stiffness ${sample.relativeStiffness.toStringAsFixed(2)}'
               : 'Flexibility test not recorded'),
           Text('Resonance ${sample.naturalFrequencyHz.toStringAsFixed(1)} Hz | Eigenfrequency score ${sample.eigenfrequencyScore.toStringAsFixed(1)}'),
-          Text('ARI ${sample.ari?.toStringAsFixed(1) ?? 'n/a'} (${_ariStatus(sample.ari).label})'),
+          Text('ARE ${sample.ari?.toStringAsFixed(1) ?? 'n/a'} (${_ariStatus(sample.ari).label})'),
           Text('Buoyancy ${sample.buoyancyPercent?.toStringAsFixed(1) ?? 'n/a'}% (${_buoyancyStatus(sample.buoyancyPercent).label})'),
           if (sample.photoPaths.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -5097,6 +5107,10 @@ DateTime? _parseDate(String raw) {
   final trimmed = raw.trim();
   if (trimmed.isEmpty) {
     return null;
+  }
+  final yearOnly = int.tryParse(trimmed);
+  if (yearOnly != null && yearOnly >= 1) {
+    return DateTime(yearOnly, 1, 1);
   }
   return DateTime.tryParse(trimmed);
 }
@@ -5614,7 +5628,7 @@ class _SettingsTab extends StatelessWidget {
                     Icon(Icons.science_outlined, color: theme.colorScheme.primary),
                     const SizedBox(width: 10),
                     Text(
-                      'Understanding ARI',
+                      'Understanding ARE',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                         color: theme.colorScheme.primary,
@@ -5624,7 +5638,7 @@ class _SettingsTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'ARI stands for Are\'s Reed Index — a single number that '
+                  'ARE stands for Acceptable Reed Estimate — a single number that '
                   'combines a cane\'s stiffness with its tapped pitch so you can compare '
                   'pieces on one axis instead of two.',
                   style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
@@ -5660,7 +5674,7 @@ class _SettingsTab extends StatelessWidget {
                   'flexibility together describe how the material will behave once it '
                   'becomes a reed. Combining the two into a single index lets you '
                   'predict a piece of cane\'s suitability for a great reed before you '
-                  'invest the hours of scraping. By judging cane with ARI up front, the '
+                  'invest the hours of scraping. By judging cane with ARE up front, the '
                   'bassoonist hopes to cut down on unsuccessful reeds — and the time, '
                   'money and frustration they cost.',
                   style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
@@ -5679,7 +5693,7 @@ class _SettingsTab extends StatelessWidget {
                 Text(
                   'These bands are a starting point — the Behavior tab learns your own '
                   'sweet spot from the reeds you flag as successful, and the green zone '
-                  'on the behavior map shows the ARI/flexibility neighbourhood your best '
+                  'on the behavior map shows the ARE/flexibility neighbourhood your best '
                   'reeds cluster in.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.78),
@@ -5761,7 +5775,7 @@ class _AriFormulaBlock extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'ARI = flexibility (°)  −  tone index (Lauritzen 0–36)',
+            'ARE = flexibility (°)  −  tone index (Lauritzen 0–36)',
             style: TextStyle(
               fontFamily: 'monospace',
               fontWeight: FontWeight.w700,
@@ -5771,7 +5785,7 @@ class _AriFormulaBlock extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Lower (more negative) ARI = stiffer cane for its pitch — generally better.',
+            'Lower (more negative) ARE = stiffer cane for its pitch — generally better.',
             style: TextStyle(
               color: onSurface.withValues(alpha: 0.75),
               fontSize: 12.5,
@@ -5791,11 +5805,11 @@ class _AriBandLegend extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rows = const [
-      ('ARI ≤ −6', 'A+ Excellent', kStatusSuccess),
-      ('−6 < ARI < 0', 'A  Very Good', kStatusSuccessAccent),
-      ('0 ≤ ARI ≤ 4', 'B  Acceptable', kStatusWarning),
-      ('4 < ARI < 10', 'C  Weak match', kStatusWarningAccent),
-      ('ARI ≥ 10', 'D  Poor', kStatusDanger),
+      ('ARE ≤ −6', 'A+ Excellent', kStatusSuccess),
+      ('−6 < ARE < 0', 'A  Very Good', kStatusSuccessAccent),
+      ('0 ≤ ARE ≤ 4', 'B  Acceptable', kStatusWarning),
+      ('4 < ARE < 10', 'C  Weak match', kStatusWarningAccent),
+      ('ARE ≥ 10', 'D  Poor', kStatusDanger),
     ];
     return Column(
       children: rows.map((r) {
@@ -6066,7 +6080,3 @@ class _GoldStandardSummary extends StatelessWidget {
     );
   }
 }
-
-
-
-
