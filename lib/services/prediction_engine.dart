@@ -115,7 +115,7 @@ class PredictionEngine {
           averages['normalizedFrequency'] ?? 0),
         _DeviationRow('eigenfrequency score', target.eigenfrequencyScore,
           averages['lauritzenToneIndex'] ?? 0),
-        _DeviationRow('ARI', target.ari ?? 0, averages['ari'] ?? 0),
+        _DeviationRow('ARE', target.ari ?? 0, averages['ari'] ?? 0),
         _DeviationRow('buoyancy %', target.buoyancyPercent ?? 0,
           averages['buoyancyPercent'] ?? 0),
       _DeviationRow('flexibility', target.flexibilityDeg,

@@ -155,6 +155,10 @@ class CaneSample {
     return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 
+  String get purchaseVintageLabel {
+    return '${purchaseDate.year.toString().padLeft(4, '0')} vintage';
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,

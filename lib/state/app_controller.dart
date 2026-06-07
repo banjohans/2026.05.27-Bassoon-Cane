@@ -547,7 +547,7 @@ class AppController extends ChangeNotifier {
         naturalFrequencyHz: LauritzenToneScale.frequencyFromIndex(row.toneScore),
         hardness: hardnessAvg,
         notes:
-          'Imported from Graph 4 | Batch: ${row.batch ?? 'n/a'} | Tone: ${row.toneLabel ?? 'n/a'} (${row.toneScore.toStringAsFixed(0)}) | ARI: ${row.ari?.toStringAsFixed(1) ?? 'n/a'} | Grade: ${_internationalGradeFromGraphTag(row.ratingTag) ?? 'no explicit grade'}',
+          'Imported from Graph 4 | Batch: ${row.batch ?? 'n/a'} | Tone: ${row.toneLabel ?? 'n/a'} (${row.toneScore.toStringAsFixed(0)}) | ARE: ${row.ari?.toStringAsFixed(1) ?? 'n/a'} | Grade: ${_internationalGradeFromGraphTag(row.ratingTag) ?? 'no explicit grade'}',
       );
       seededCanes.add(cane);
 
@@ -626,7 +626,7 @@ class AppController extends ChangeNotifier {
         naturalFrequencyHz: LauritzenToneScale.frequencyFromIndex(row.toneScore),
         hardness: hardnessAvg,
         notes:
-          'Imported from Graph 4 | Batch: ${row.batch ?? 'n/a'} | Tone: ${row.toneLabel ?? 'n/a'} (${row.toneScore.toStringAsFixed(0)}) | ARI: ${row.ari?.toStringAsFixed(1) ?? 'n/a'} | Grade: ${_internationalGradeFromGraphTag(row.ratingTag) ?? 'no explicit grade'}',
+          'Imported from Graph 4 | Batch: ${row.batch ?? 'n/a'} | Tone: ${row.toneLabel ?? 'n/a'} (${row.toneScore.toStringAsFixed(0)}) | ARE: ${row.ari?.toStringAsFixed(1) ?? 'n/a'} | Grade: ${_internationalGradeFromGraphTag(row.ratingTag) ?? 'no explicit grade'}',
       );
       seededCanes.add(cane);
 
