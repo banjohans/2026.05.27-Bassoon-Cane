@@ -420,6 +420,13 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> deleteAllHistory() async {
+    _caneSamples = const [];
+    _reedEvaluations = const [];
+    await _persist();
+    notifyListeners();
+  }
+
   CaneSample? findCane(String id) {
     for (final sample in _caneSamples) {
       if (sample.id == id) {

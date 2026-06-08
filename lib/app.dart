@@ -254,10 +254,10 @@ ThemeData _buildTheme(AppThemeVariant variant) {
       backgroundColor: p.primaryContainer,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
-      foregroundColor: p.onPrimary,
-      iconTheme: IconThemeData(color: p.onPrimary),
+      foregroundColor: p.onPrimaryContainer,
+      iconTheme: IconThemeData(color: p.onPrimaryContainer),
       titleTextStyle: TextStyle(
-        color: p.onPrimary,
+        color: p.onPrimaryContainer,
         fontWeight: FontWeight.w700,
         fontSize: 18,
       ),
@@ -334,8 +334,8 @@ ThemeData _buildTheme(AppThemeVariant variant) {
     ),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: p.primaryContainer,
-      contentTextStyle: TextStyle(color: p.onPrimary),
-      actionTextColor: p.onPrimary,
+      contentTextStyle: TextStyle(color: p.onPrimaryContainer),
+      actionTextColor: p.onPrimaryContainer,
       behavior: SnackBarBehavior.floating,
     ),
     navigationBarTheme: NavigationBarThemeData(

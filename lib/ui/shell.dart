@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -24,7 +25,6 @@ import '../app.dart'
         kBrandBurgundyDeep,
         kBrandGold,
         kBrandGoldLight,
-        kBrandGoldPale,
         kBrandCane,
         kBrandParchment,
         kBrandParchmentDeep,
@@ -48,8 +48,114 @@ class ShellPage extends StatefulWidget {
   State<ShellPage> createState() => _ShellPageState();
 }
 
+class _InAppTourStep {
+  const _InAppTourStep({
+    required this.tab,
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.bullets,
+  });
+
+  final int tab;
+  final IconData icon;
+  final String title;
+  final String body;
+  final List<String> bullets;
+}
+
 class _ShellPageState extends State<ShellPage> {
   int _tab = 0;
+  bool _tourActive = false;
+  int _tourIndex = 0;
+
+  static const List<_InAppTourStep> _tourSteps = [
+    _InAppTourStep(
+      tab: 0,
+      icon: Icons.home_rounded,
+      title: 'Home Dashboard',
+      body: 'Start here to read trends and your current best-performance profile.',
+      bullets: [
+        'Check success rate and average quality in your selected date range.',
+        'Use this as your quick status view before making adjustments.',
+      ],
+    ),
+    _InAppTourStep(
+      tab: 1,
+      icon: Icons.insights_rounded,
+      title: 'Behavior Map',
+      body: 'This view shows where successful reeds cluster on the map.',
+      bullets: [
+        'Tap points or clusters to inspect the linked reeds.',
+        'Use the target zone to guide your next cane selection.',
+      ],
+    ),
+    _InAppTourStep(
+      tab: 2,
+      icon: Icons.straighten,
+      title: 'Cane Logging',
+      body: 'Register cane pieces and capture measurements and resonance.',
+      bullets: [
+        'Add physical metrics and photos for traceability.',
+        'Use the recorder flow to set reliable natural frequency.',
+      ],
+    ),
+    _InAppTourStep(
+      tab: 3,
+      icon: Icons.library_music,
+      title: 'Reed Evaluations',
+      body: 'Connect musical outcomes to cane instances.',
+      bullets: [
+        'Rate response, tone, stability, intonation, and projection.',
+        'Use export/import JSON for backup and restore.',
+      ],
+    ),
+    _InAppTourStep(
+      tab: 4,
+      icon: Icons.tune_rounded,
+      title: 'About and Safety',
+      body: 'Review ARE guidance, app settings, and data safety actions.',
+      bullets: [
+        'Read the ARE interpretation bands to align evaluations.',
+        'Use Danger zone only after exporting a backup.',
+      ],
+    ),
+  ];
+
+  void _startTour() {
+    setState(() {
+      _tourActive = true;
+      _tourIndex = 0;
+      _tab = _tourSteps.first.tab;
+    });
+  }
+
+  void _closeTour() {
+    setState(() => _tourActive = false);
+  }
+
+  void _setTourStep(int index) {
+    final safeIndex = index.clamp(0, _tourSteps.length - 1);
+    setState(() {
+      _tourIndex = safeIndex;
+      _tab = _tourSteps[safeIndex].tab;
+    });
+  }
+
+  void _nextTourStep() {
+    if (_tourIndex >= _tourSteps.length - 1) {
+      _closeTour();
+      return;
+    }
+    _setTourStep(_tourIndex + 1);
+  }
+
+  void _previousTourStep() {
+    if (_tourIndex <= 0) {
+      return;
+    }
+    _setTourStep(_tourIndex - 1);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +170,7 @@ class _ShellPageState extends State<ShellPage> {
           _BehaviorTab(controller: controller),
           _CaneTab(controller: controller),
           _ReedTab(controller: controller),
-          const _SettingsTab(),
+          _SettingsTab(onStartTour: _startTour),
         ];
 
         return Scaffold(
@@ -95,13 +201,134 @@ class _ShellPageState extends State<ShellPage> {
                         },
                       ),
                     ),
+                  if (_tourActive)
+                    Positioned.fill(
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0, end: 1),
+                        duration: const Duration(milliseconds: 180),
+                        builder: (context, value, child) {
+                          return IgnorePointer(
+                            child: BackdropFilter(
+                              filter: ui.ImageFilter.blur(
+                                sigmaX: 1.8 * value,
+                                sigmaY: 1.8 * value,
+                              ),
+                              child: ColoredBox(
+                                color: Colors.black.withValues(alpha: 0.28 * value),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  if (_tourActive)
+                    Positioned(
+                      left: 12,
+                      right: 12,
+                      bottom: 12,
+                      child: Card(
+                        elevation: 8,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 16,
+                                    backgroundColor: Theme.of(
+                                      context,
+                                    ).colorScheme.primary.withValues(alpha: 0.14),
+                                    child: Icon(
+                                      _tourSteps[_tourIndex].icon,
+                                      color: Theme.of(context).colorScheme.primary,
+                                      size: 18,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Tour ${_tourIndex + 1}/${_tourSteps.length}: ${_tourSteps[_tourIndex].title}',
+                                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _tourSteps[_tourIndex].body,
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.35),
+                              ),
+                              const SizedBox(height: 8),
+                              ..._tourSteps[_tourIndex].bullets.map(
+                                (line) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Padding(
+                                        padding: EdgeInsets.only(top: 6),
+                                        child: Icon(Icons.circle, size: 6, color: kBrandBurgundy),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          line,
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.bodySmall?.copyWith(height: 1.35),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  OutlinedButton(
+                                    onPressed: _tourIndex == 0 ? null : _previousTourStep,
+                                    child: const Text('Back'),
+                                  ),
+                                  const Spacer(),
+                                  TextButton(
+                                    onPressed: _closeTour,
+                                    child: const Text('Close'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FilledButton(
+                                    onPressed: _nextTourStep,
+                                    child: Text(
+                                      _tourIndex == _tourSteps.length - 1 ? 'Finish' : 'Next',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
           ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _tab,
-            onDestinationSelected: (value) => setState(() => _tab = value),
+            onDestinationSelected: (value) {
+              setState(() {
+                _tab = value;
+                if (_tourActive) {
+                  final match = _tourSteps.indexWhere((step) => step.tab == value);
+                  if (match >= 0) {
+                    _tourIndex = match;
+                  }
+                }
+              });
+            },
             destinations: const [
               NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Home'),
               NavigationDestination(icon: Icon(Icons.insights_rounded), label: 'Behavior'),
@@ -222,6 +449,25 @@ class _DashboardTabState extends State<_DashboardTab> {
         .map((r) => canesById[r.caneId])
         .whereType<CaneSample>()
         .toList();
+    final hallOfFame = allReeds
+        .where((reed) => reed.goldStandard)
+        .map((reed) {
+          final cane = canesById[reed.caneId];
+          if (cane == null) {
+            return null;
+          }
+          return _HallOfFameEntry(reed: reed, cane: cane);
+        })
+        .whereType<_HallOfFameEntry>()
+        .toList()
+      ..sort((a, b) {
+        final score = b.reed.overallScore.compareTo(a.reed.overallScore);
+        if (score != 0) {
+          return score;
+        }
+        return b.reed.createdAt.compareTo(a.reed.createdAt);
+      });
+    final topHallOfFame = hallOfFame.take(10).toList();
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -277,6 +523,8 @@ class _DashboardTabState extends State<_DashboardTab> {
             topReeds: topReeds,
             topCanes: topCanes,
           ),
+          const SizedBox(height: 12),
+          _GoldStandardHallOfFameCard(entries: topHallOfFame),
         ],
       ],
     );
@@ -763,6 +1011,189 @@ class _TopPerformerCard extends StatelessWidget {
   }
 }
 
+class _HallOfFameEntry {
+  const _HallOfFameEntry({required this.reed, required this.cane});
+
+  final ReedEvaluation reed;
+  final CaneSample cane;
+}
+
+class _GoldStandardHallOfFameCard extends StatelessWidget {
+  const _GoldStandardHallOfFameCard({required this.entries});
+
+  final List<_HallOfFameEntry> entries;
+
+  String _bestTraits(ReedEvaluation reed) {
+    final traits = <MapEntry<String, int>>[
+      MapEntry('Response', reed.response),
+      MapEntry('Stability', reed.stability),
+      MapEntry('Tone', reed.tone),
+      MapEntry('Intonation', reed.intonation),
+      MapEntry('Flexibility', reed.flexibility),
+      MapEntry('Projection', reed.projection),
+      MapEntry('Resistance', reed.resistance),
+    ]..sort((a, b) => b.value.compareTo(a.value));
+
+    return traits.take(2).map((item) => '${item.key} ${item.value}/10').join('  •  ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final onSurface = theme.colorScheme.onSurface;
+    final isDark = theme.brightness == Brightness.dark;
+    final badgeBg = isDark
+      ? const Color(0xFFB8842B).withValues(alpha: 0.78)
+      : const Color(0xFFE2B24A).withValues(alpha: 0.24);
+    final badgeTextColor = isDark ? const Color(0xFFFFF4D7) : const Color(0xFF5B3A00);
+    final badgeBorder = isDark
+      ? const Color(0xFFF5D67A).withValues(alpha: 0.65)
+      : const Color(0xFFB8842B).withValues(alpha: 0.45);
+
+    return Card(
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFFF5D67A).withValues(alpha: 0.26),
+              theme.colorScheme.surface.withValues(alpha: 0.96),
+              const Color(0xFFE2B24A).withValues(alpha: 0.18),
+            ],
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.emoji_events_rounded, color: Color(0xFFE2B24A), size: 24),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Gold Standard Hall of Fame',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: onSurface,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: badgeBg,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: badgeBorder),
+                  ),
+                  child: Text(
+                    'Top ${entries.length}/10 all-time',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11.5,
+                      color: badgeTextColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Highest-scoring reeds ever marked as Gold Standard, with their strongest metrics and cane fingerprints.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                height: 1.35,
+                color: onSurface.withValues(alpha: 0.78),
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (entries.isEmpty)
+              Text(
+                'No Gold Standard reeds yet. Mark a top reed as Gold Standard to populate the Hall of Fame.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: onSurface.withValues(alpha: 0.72),
+                ),
+              )
+            else
+              ...entries.asMap().entries.map((item) {
+                final rank = item.key + 1;
+                final entry = item.value;
+                final score = entry.reed.overallScore;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface.withValues(alpha: 0.78),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFB8842B).withValues(alpha: 0.36)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 30,
+                        height: 30,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFFF5D67A), Color(0xFFB8842B)],
+                          ),
+                          border: Border.all(color: const Color(0xFF8B6420).withValues(alpha: 0.7)),
+                        ),
+                        child: Text(
+                          '$rank',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 12,
+                            color: Color(0xFF2F1E00),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${entry.cane.sampleName} · ${entry.cane.purchaseVintageLabel}',
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Score ${score.toStringAsFixed(2)}/10 (${ReedEvaluation.gradeForScore(score)})   ·   ${entry.cane.naturalFrequencyHz.toStringAsFixed(0)} Hz   ·   ${entry.cane.flexibilityDeg.toStringAsFixed(1)} deg',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: onSurface.withValues(alpha: 0.82),
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Best stats: ${_bestTraits(entry.reed)}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: onSurface.withValues(alpha: 0.72),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _BehaviorTab extends StatefulWidget {
   const _BehaviorTab({required this.controller});
 
@@ -778,6 +1209,7 @@ class _BehaviorTabState extends State<_BehaviorTab> {
   double _zoomAtScaleStart = 1;
   Offset _focusDataPointAtScaleStart = Offset.zero;
   Size _graphCanvasSize = const Size(0, 0);
+  Set<String> _selectedGraphEvaluationIds = const <String>{};
 
   @override
   Widget build(BuildContext context) {
@@ -868,14 +1300,22 @@ class _BehaviorTabState extends State<_BehaviorTab> {
                                 clusters: clusters,
                                 livePoint: null,
                                 zoneModel: model,
+                                frameColor: scheme.surfaceContainerHigh,
+                                plotTintColor: scheme.onSurface.withValues(alpha: 0.08),
                                 axisColor: scheme.onSurface,
                                 labelColor: scheme.onSurface,
+                                selectedEvaluationIds: _selectedGraphEvaluationIds,
                               ),
                               child: const SizedBox.expand(),
                             ),
                           ),
                           Positioned(
                             top: 8,
+                            right: 8,
+                            child: _HeatmapLegendCard(),
+                          ),
+                          Positioned(
+                            bottom: 8,
                             right: 8,
                             child: Column(
                               children: [
@@ -961,7 +1401,7 @@ class _BehaviorTabState extends State<_BehaviorTab> {
     });
   }
 
-  void _onGraphTap(Offset localPosition, List<_BehaviorCluster> clusters) {
+  Future<void> _onGraphTap(Offset localPosition, List<_BehaviorCluster> clusters) async {
     if (clusters.isEmpty) {
       return;
     }
@@ -981,11 +1421,50 @@ class _BehaviorTabState extends State<_BehaviorTab> {
     if (nearest == null || nearestDistance > tapRadius) {
       return;
     }
-    if (nearest.items.length == 1) {
-      _showGraphEntryPreview(nearest.items.first.entry);
+    final tappedCluster = nearest;
+
+    if (tappedCluster.items.length == 1) {
+      final entry = tappedCluster.items.first.entry;
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _selectedGraphEvaluationIds = {entry.evaluation.id};
+      });
+      await _showGraphEntryPreview(entry);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _selectedGraphEvaluationIds = const <String>{};
+      });
       return;
     }
-    _showClusterPicker(nearest);
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _selectedGraphEvaluationIds =
+          tappedCluster.items.map((item) => item.entry.evaluation.id).toSet();
+    });
+
+    final pickedEntry = await _showClusterPicker(tappedCluster);
+    if (!mounted) {
+      return;
+    }
+    if (pickedEntry != null) {
+      setState(() {
+        _selectedGraphEvaluationIds = {pickedEntry.evaluation.id};
+      });
+      await _showGraphEntryPreview(pickedEntry);
+      if (!mounted) {
+        return;
+      }
+    }
+    setState(() {
+      _selectedGraphEvaluationIds = const <String>{};
+    });
   }
 
   List<_BehaviorCluster> _clusterPlottedEntries(List<_PlottedBehaviorEntry> plottedEntries) {
@@ -1131,12 +1610,12 @@ class _BehaviorTabState extends State<_BehaviorTab> {
     );
   }
 
-  Future<void> _showClusterPicker(_BehaviorCluster cluster) async {
+  Future<_BehaviorEntry?> _showClusterPicker(_BehaviorCluster cluster) async {
     if (!mounted) {
-      return;
+      return null;
     }
 
-    await showModalBottomSheet<void>(
+    return showModalBottomSheet<_BehaviorEntry>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) {
@@ -1187,8 +1666,7 @@ class _BehaviorTabState extends State<_BehaviorTab> {
                       color: entry.success ? kStatusSuccess : kStatusDanger,
                     ),
                     onTap: () {
-                      Navigator.of(sheetContext).pop();
-                      _showGraphEntryPreview(entry);
+                      Navigator.of(sheetContext).pop(entry);
                     },
                   ),
                 );
@@ -1326,7 +1804,7 @@ class _BehaviorGraphProjection {
       : points.map((item) => item.flexibilityDeg).reduce(math.max).toDouble() + 2;
 
     return _BehaviorGraphProjection(
-      plotRect: Rect.fromLTWH(54, 18, size.width - 74, size.height - 54),
+      plotRect: Rect.fromLTWH(74, 24, size.width - 116, size.height - 76),
       minFrequency: minFrequency,
       maxFrequency: maxFrequency,
       minFlexibility: minFlexibility,
@@ -1385,21 +1863,27 @@ class _BehaviorMapPainter extends CustomPainter {
     required this.clusters,
     required this.livePoint,
     required this.zoneModel,
+    required this.frameColor,
+    required this.plotTintColor,
     required this.axisColor,
     required this.labelColor,
+    required this.selectedEvaluationIds,
   });
 
   final _BehaviorGraphProjection projection;
   final List<_BehaviorCluster> clusters;
   final _BehaviorPoint? livePoint;
   final _ZoneModel zoneModel;
+  final Color frameColor;
+  final Color plotTintColor;
   final Color axisColor;
   final Color labelColor;
+  final Set<String> selectedEvaluationIds;
 
   @override
   void paint(Canvas canvas, Size size) {
     final frame = Rect.fromLTWH(0, 0, size.width, size.height);
-    final background = Paint()..color = kSurfaceTint;
+    final background = Paint()..color = frameColor;
     canvas.drawRRect(RRect.fromRectAndRadius(frame, const Radius.circular(12)), background);
 
     final plotRect = projection.plotRect;
@@ -1411,53 +1895,102 @@ class _BehaviorMapPainter extends CustomPainter {
         flexibilityDeg: zoneModel.centerFlexibility,
       ),
     );
+
     final xScale = projection.xScale * projection.zoom;
     final yScale = projection.yScale * projection.zoom;
 
-    final preferred = Rect.fromCenter(
-      center: zoneCenter,
-      width: (zoneModel.bandFrequency * 2 * xScale).clamp(30, size.width),
-      height: (zoneModel.bandFlexibility * 2 * yScale).clamp(20, size.height),
-    );
-    final transition = Rect.fromCenter(
-      center: zoneCenter,
-      width: preferred.width * 1.6,
-      height: preferred.height * 1.6,
-    );
-    final problematic = Rect.fromCenter(
-      center: zoneCenter,
-      width: preferred.width * 2.3,
-      height: preferred.height * 2.3,
-    );
-
-    // Three concentric behaviour zones drawn with radial gradients for a
-    // softer, more sculpted look than the previous flat ovals.
-    void drawGradientZone(Rect rect, Color baseColor, double centerAlpha, double edgeAlpha) {
-      final paint = Paint()
-        ..shader = RadialGradient(
-          colors: [
-            baseColor.withValues(alpha: centerAlpha),
-            baseColor.withValues(alpha: edgeAlpha),
-          ],
-          stops: const [0.0, 1.0],
-        ).createShader(rect);
-      canvas.drawOval(rect, paint);
+    // Build weighted successful anchors and create organic contour bands from
+    // directional influence, producing non-circular heatmap geometry.
+    final anchors = <_HeatAnchor>[];
+    double weightedX = zoneCenter.dx * 3;
+    double weightedY = zoneCenter.dy * 3;
+    double weightedSum = 3;
+    for (final cluster in clusters) {
+      final successful = cluster.items.where((item) => item.entry.success).toList();
+      if (successful.isEmpty) {
+        continue;
+      }
+      final avgScore = successful
+              .map((item) => item.entry.score)
+              .reduce((a, b) => a + b) /
+          successful.length;
+      final weight = (successful.length * avgScore).clamp(1.0, 40.0);
+      anchors.add(_HeatAnchor(position: cluster.center, weight: weight));
+      weightedX += cluster.center.dx * weight;
+      weightedY += cluster.center.dy * weight;
+      weightedSum += weight;
     }
 
-    drawGradientZone(problematic, kStatusDanger, 0.05, 0.22);
-    drawGradientZone(transition, kStatusWarning, 0.10, 0.26);
-    drawGradientZone(preferred, kStatusSuccess, 0.34, 0.10);
+    final weightedCenter = Offset(weightedX / weightedSum, weightedY / weightedSum);
+    final baseRadius = ((zoneModel.bandFrequency * xScale) +
+                (zoneModel.bandFlexibility * yScale)) /
+            2 *
+        1.55;
+    final baseRadii = _buildOrganicHeatRadii(
+      center: weightedCenter,
+      anchors: anchors,
+      baseRadius: baseRadius.clamp(44.0, 160.0),
+      sampleCount: 72,
+    );
 
-    // Crisp hairline rings on each zone boundary for definition.
-    final zoneOutline = Paint()
+    final corePath = _buildOrganicPath(
+      center: weightedCenter,
+      plotRect: plotRect,
+      radii: baseRadii,
+      scale: 0.68,
+    );
+    final midPath = _buildOrganicPath(
+      center: weightedCenter,
+      plotRect: plotRect,
+      radii: baseRadii,
+      scale: 0.96,
+    );
+    final outerPath = _buildOrganicPath(
+      center: weightedCenter,
+      plotRect: plotRect,
+      radii: baseRadii,
+      scale: 1.24,
+    );
+
+    canvas.save();
+    canvas.clipRect(plotRect);
+    canvas.drawRect(plotRect, Paint()..color = plotTintColor);
+
+    canvas.drawPath(
+      outerPath,
+      Paint()
+        ..color = const Color(0xFFE85D4F).withValues(alpha: 0.26)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0),
+    );
+    canvas.drawPath(
+      midPath,
+      Paint()
+        ..color = const Color(0xFFF2C94C).withValues(alpha: 0.30)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0),
+    );
+    canvas.drawPath(
+      corePath,
+      Paint()
+        ..color = const Color(0xFF2E7D4F).withValues(alpha: 0.34)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.6),
+    );
+
+    final ringPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    canvas.drawOval(preferred,
-        zoneOutline..color = kStatusSuccess.withValues(alpha: 0.55));
-    canvas.drawOval(transition,
-        zoneOutline..color = kStatusWarning.withValues(alpha: 0.45));
-    canvas.drawOval(problematic,
-        zoneOutline..color = kStatusDanger.withValues(alpha: 0.35));
+      ..strokeWidth = 1.0;
+    canvas.drawPath(
+      outerPath,
+      ringPaint..color = const Color(0xFFE85D4F).withValues(alpha: 0.22),
+    );
+    canvas.drawPath(
+      midPath,
+      ringPaint..color = const Color(0xFFF2C94C).withValues(alpha: 0.24),
+    );
+    canvas.drawPath(
+      corePath,
+      ringPaint..color = const Color(0xFF2E7D4F).withValues(alpha: 0.26),
+    );
+    canvas.restore();
 
     final gridPaint = Paint()
       ..color = kSurfaceLine.withValues(alpha: 0.6)
@@ -1531,7 +2064,7 @@ class _BehaviorMapPainter extends CustomPainter {
       );
       drawLabel(
         formatTick(frequencyValue),
-        Offset(x, plotRect.bottom + 14),
+        Offset(x, plotRect.bottom + 18),
         center: true,
       );
     }
@@ -1549,22 +2082,25 @@ class _BehaviorMapPainter extends CustomPainter {
       );
       drawLabel(
         formatTick(flexibilityValue),
-        Offset(plotRect.left - 9, y),
+        Offset(plotRect.left - 28, y),
         center: true,
       );
     }
 
     drawLabel(
-      'Cane Tone: higher->lower',
-      Offset(plotRect.center.dx, plotRect.bottom + 30),
+      'Cane Tone (Hz)',
+      Offset(plotRect.center.dx, plotRect.bottom + 36),
       center: true,
     );
     drawLabel(
-      'Flexibility: less->more',
-      Offset(plotRect.left - 52, plotRect.center.dy),
+      'Flexibility',
+      Offset(plotRect.left - 54, plotRect.center.dy),
       center: true,
       rotation: -math.pi / 2,
     );
+
+    canvas.save();
+    canvas.clipRect(plotRect);
 
     for (final cluster in clusters) {
       final successCount = cluster.items.where((item) => item.entry.success).length;
@@ -1572,10 +2108,23 @@ class _BehaviorMapPainter extends CustomPainter {
       final color = Color.lerp(kStatusDanger, kStatusSuccess, ratio)!;
       final hasGoldStandard =
           cluster.items.any((item) => item.entry.evaluation.goldStandard);
+      final isSelected = cluster.items.any(
+        (item) => selectedEvaluationIds.contains(item.entry.evaluation.id),
+      );
 
       final radius = cluster.items.length == 1
           ? 4.0
           : (6 + math.sqrt(cluster.items.length) * 2).clamp(8, 16).toDouble();
+
+      if (isSelected) {
+        canvas.drawCircle(
+          cluster.center,
+          radius + 13,
+          Paint()
+            ..color = kBrandGold.withValues(alpha: 0.42)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+        );
+      }
 
       // Soft drop shadow under every cluster dot for premium depth.
       canvas.drawCircle(
@@ -1633,6 +2182,17 @@ class _BehaviorMapPainter extends CustomPainter {
         );
       }
 
+      if (isSelected) {
+        canvas.drawCircle(
+          cluster.center,
+          radius + 4,
+          Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.0,
+        );
+      }
+
       if (cluster.items.length > 1) {
         canvas.drawCircle(
           cluster.center,
@@ -1643,14 +2203,25 @@ class _BehaviorMapPainter extends CustomPainter {
             ..strokeWidth = 1.4,
         );
 
+        final countTextColor = color.computeLuminance() > 0.58
+            ? const Color(0xFF1A1A1A)
+            : Colors.white;
+
         final tp = TextPainter(
           text: TextSpan(
             text: '${cluster.items.length}',
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: countTextColor,
               fontSize: 10,
               fontWeight: FontWeight.w700,
-              shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
+              shadows: [
+                Shadow(
+                  color: countTextColor == Colors.white
+                      ? Colors.black54
+                      : Colors.white70,
+                  blurRadius: 2,
+                ),
+              ],
             ),
           ),
           textDirection: TextDirection.ltr,
@@ -1665,6 +2236,199 @@ class _BehaviorMapPainter extends CustomPainter {
     if (livePoint != null) {
       canvas.drawCircle(project(livePoint!), 6, Paint()..color = kBrandBurgundy);
     }
+
+    // Recommended target marker (crosshair + center point), rendered above
+    // occurrences so it remains readable when points overlap the target area.
+    final targetPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..color = Colors.white.withValues(alpha: 0.82);
+    canvas.drawCircle(zoneCenter, 12, targetPaint);
+    canvas.drawLine(
+      zoneCenter.translate(-20, 0),
+      zoneCenter.translate(-7, 0),
+      targetPaint,
+    );
+    canvas.drawLine(
+      zoneCenter.translate(7, 0),
+      zoneCenter.translate(20, 0),
+      targetPaint,
+    );
+    canvas.drawLine(
+      zoneCenter.translate(0, -20),
+      zoneCenter.translate(0, -7),
+      targetPaint,
+    );
+    canvas.drawLine(
+      zoneCenter.translate(0, 7),
+      zoneCenter.translate(0, 20),
+      targetPaint,
+    );
+    canvas.drawCircle(
+      zoneCenter,
+      4.5,
+      Paint()..color = const Color(0xFF2E7D4F).withValues(alpha: 0.90),
+    );
+
+    final callout = TextPainter(
+      text: TextSpan(
+        text:
+            'Recommended target\n${zoneModel.centerFrequency.round()} Hz\n${zoneModel.centerFlexibility.toStringAsFixed(1)} flexibility',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          height: 1.25,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: 130);
+
+    final calloutRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        (zoneCenter.dx + 18).clamp(plotRect.left + 8, plotRect.right - 152),
+        (zoneCenter.dy - 36).clamp(plotRect.top + 8, plotRect.bottom - 86),
+        144,
+        74,
+      ),
+      const Radius.circular(12),
+    );
+    canvas.drawRRect(
+      calloutRect,
+      Paint()..color = const Color(0xFF3F3A36).withValues(alpha: 0.76),
+    );
+    callout.paint(
+      canvas,
+      Offset(calloutRect.left + 12, calloutRect.top + 11),
+    );
+
+    canvas.restore();
+  }
+
+  List<double> _buildOrganicHeatRadii({
+    required Offset center,
+    required List<_HeatAnchor> anchors,
+    required double baseRadius,
+    required int sampleCount,
+  }) {
+    if (anchors.isEmpty) {
+      return List<double>.filled(sampleCount, baseRadius);
+    }
+
+    final radii = List<double>.filled(sampleCount, baseRadius);
+    const sigma = 0.50;
+    for (int i = 0; i < sampleCount; i++) {
+      final theta = (2 * math.pi * i) / sampleCount;
+      double radius = baseRadius;
+      for (final anchor in anchors) {
+        final vector = anchor.position - center;
+        final dist = vector.distance;
+        if (dist < 1) {
+          continue;
+        }
+        final angle = math.atan2(vector.dy, vector.dx);
+        final diff = _wrapAngle(theta - angle).abs();
+        final angular = math.exp(-(diff * diff) / (2 * sigma * sigma));
+        final pull = (dist * 0.72).clamp(0.0, 180.0);
+        radius += angular * pull * (anchor.weight / 30);
+      }
+      radius *= 0.97 + 0.06 * math.sin(theta * 2.0);
+      radii[i] = radius;
+    }
+
+    var smoothed = radii;
+    for (int pass = 0; pass < 4; pass++) {
+      final next = List<double>.filled(sampleCount, 0);
+      for (int i = 0; i < sampleCount; i++) {
+        final prev = smoothed[(i - 1 + sampleCount) % sampleCount];
+        final curr = smoothed[i];
+        final nxt = smoothed[(i + 1) % sampleCount];
+        next[i] = (prev + curr * 2 + nxt) / 4;
+      }
+      smoothed = next;
+    }
+    return smoothed;
+  }
+
+  Path _buildOrganicPath({
+    required Offset center,
+    required Rect plotRect,
+    required List<double> radii,
+    required double scale,
+  }) {
+    final count = radii.length;
+    final points = <Offset>[];
+    for (int i = 0; i < count; i++) {
+      final theta = (2 * math.pi * i) / count;
+      final dir = Offset(math.cos(theta), math.sin(theta));
+      final maxRadius = _rayToRectRadius(center, dir, plotRect) - 6;
+      final radius = (radii[i] * scale).clamp(24.0, maxRadius);
+      points.add(center + dir * radius);
+    }
+
+    final path = Path();
+    if (points.isEmpty) {
+      return path;
+    }
+    path.moveTo(points.first.dx, points.first.dy);
+    for (int i = 1; i < points.length; i++) {
+      final p0 = points[i - 1];
+      final p1 = points[i];
+      final mid = Offset((p0.dx + p1.dx) / 2, (p0.dy + p1.dy) / 2);
+      path.quadraticBezierTo(p0.dx, p0.dy, mid.dx, mid.dy);
+    }
+    final last = points.last;
+    final first = points.first;
+    final closingMid = Offset((last.dx + first.dx) / 2, (last.dy + first.dy) / 2);
+    path.quadraticBezierTo(last.dx, last.dy, closingMid.dx, closingMid.dy);
+    path.close();
+    return path;
+  }
+
+  double _rayToRectRadius(Offset center, Offset dir, Rect rect) {
+    final candidates = <double>[];
+
+    if (dir.dx.abs() > 1e-6) {
+      final tx1 = (rect.left - center.dx) / dir.dx;
+      final y1 = center.dy + tx1 * dir.dy;
+      if (tx1 > 0 && y1 >= rect.top && y1 <= rect.bottom) {
+        candidates.add(tx1);
+      }
+      final tx2 = (rect.right - center.dx) / dir.dx;
+      final y2 = center.dy + tx2 * dir.dy;
+      if (tx2 > 0 && y2 >= rect.top && y2 <= rect.bottom) {
+        candidates.add(tx2);
+      }
+    }
+
+    if (dir.dy.abs() > 1e-6) {
+      final ty1 = (rect.top - center.dy) / dir.dy;
+      final x1 = center.dx + ty1 * dir.dx;
+      if (ty1 > 0 && x1 >= rect.left && x1 <= rect.right) {
+        candidates.add(ty1);
+      }
+      final ty2 = (rect.bottom - center.dy) / dir.dy;
+      final x2 = center.dx + ty2 * dir.dx;
+      if (ty2 > 0 && x2 >= rect.left && x2 <= rect.right) {
+        candidates.add(ty2);
+      }
+    }
+
+    if (candidates.isEmpty) {
+      return 24;
+    }
+    return candidates.reduce(math.min);
+  }
+
+  double _wrapAngle(double value) {
+    var v = value;
+    while (v > math.pi) {
+      v -= 2 * math.pi;
+    }
+    while (v < -math.pi) {
+      v += 2 * math.pi;
+    }
+    return v;
   }
 
   @override
@@ -1672,7 +2436,10 @@ class _BehaviorMapPainter extends CustomPainter {
     return oldDelegate.projection != projection ||
         oldDelegate.clusters != clusters ||
         oldDelegate.livePoint != livePoint ||
-        oldDelegate.zoneModel != zoneModel;
+        oldDelegate.zoneModel != zoneModel ||
+        oldDelegate.frameColor != frameColor ||
+        oldDelegate.plotTintColor != plotTintColor ||
+        oldDelegate.selectedEvaluationIds != selectedEvaluationIds;
   }
 }
 
@@ -1774,9 +2541,9 @@ class _FavoredCompromiseCard extends StatelessWidget {
   Widget build(BuildContext context) {
     if (profile == null) {
       return const _SectionCard(
-        title: 'Favored compromise',
+        title: 'Recommended target',
         child: Text(
-          'No successful reeds yet. As soon as you log a reed with a score of 8 or higher, the score-weighted target profile will appear here.',
+          'No successful reeds yet. As soon as you log a reed with a score of 8 or higher, a weighted target profile will appear here.',
         ),
       );
     }
@@ -1795,7 +2562,7 @@ class _FavoredCompromiseCard extends StatelessWidget {
     ];
 
     return _SectionCard(
-      title: 'Favored compromise',
+      title: 'Recommended target',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2056,6 +2823,76 @@ class _TargetRowData {
   const _TargetRowData(this.label, this.value);
   final String label;
   final String value;
+}
+
+class _HeatAnchor {
+  const _HeatAnchor({required this.position, required this.weight});
+
+  final Offset position;
+  final double weight;
+}
+
+class _HeatmapLegendCard extends StatelessWidget {
+  const _HeatmapLegendCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3F3A36).withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _HeatmapLegendRow(label: '9-10', color: Color(0xFF2E7D4F), text: 'dark green'),
+          _HeatmapLegendRow(label: '7-8', color: Color(0xFF83A846), text: 'light green'),
+          _HeatmapLegendRow(label: '4-6', color: Color(0xFFF2B84B), text: 'yellow'),
+          _HeatmapLegendRow(label: '1-3', color: Color(0xFFE85D4F), text: 'red'),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeatmapLegendRow extends StatelessWidget {
+  const _HeatmapLegendRow({
+    required this.label,
+    required this.color,
+    required this.text,
+  });
+
+  final String label;
+  final Color color;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1.5),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$label  $text',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _PitchValue {
@@ -3029,9 +3866,11 @@ class _AddCanePageState extends State<AddCanePage> {
               top: false,
               child: Container(
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                decoration: const BoxDecoration(
-                  color: kBrandParchment,
-                  border: Border(top: BorderSide(color: kSurfaceLine)),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                  border: Border(
+                    top: BorderSide(color: Theme.of(context).colorScheme.outline),
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -4128,6 +4967,8 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final manualValue = _tryParseNumber(_manualController.text);
     final heardHz = _isAuditioning
         ? _sliderHz
@@ -4168,6 +5009,8 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
               _LiveCapturePanel(
                 isRecording: _isRecording,
                 frame: _liveFrame,
+                idleSurface: scheme.surfaceContainerHigh,
+                idleBorder: scheme.outline,
               ),
               const SizedBox(height: 10),
               Wrap(
@@ -4191,7 +5034,11 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                 height: 110,
                 width: double.infinity,
                 child: CustomPaint(
-                  painter: _TakeBarsPainter(values: _takes, selectedIndex: _selectedIndex),
+                  painter: _TakeBarsPainter(
+                    values: _takes,
+                    selectedIndex: _selectedIndex,
+                    backgroundColor: scheme.surfaceContainerHigh,
+                  ),
                   child: const SizedBox.expand(),
                 ),
               ),
@@ -4201,6 +5048,8 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                 mean: _mean,
                 stddev: _stddev,
                 confidencePercent: _confidencePercent,
+                surfaceColor: scheme.surfaceContainerHigh,
+                borderColor: scheme.outline,
               ),
               const SizedBox(height: 10),
               if (_takes.isEmpty)
@@ -4214,7 +5063,9 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                     final isSelected = _selectedIndex == index;
                     return Card(
                       margin: const EdgeInsets.only(bottom: 6),
-                      color: isSelected ? kBrandGoldPale : null,
+                      color: isSelected
+                          ? scheme.secondaryContainer.withValues(alpha: 0.72)
+                          : null,
                       child: ListTile(
                         dense: true,
                         title: Text(
@@ -4293,7 +5144,9 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                         (manualValue - candidate.hz).abs() <= 0.6;
                     return Card(
                       margin: const EdgeInsets.only(bottom: 6),
-                      color: selected ? kBrandGoldPale : null,
+                      color: selected
+                          ? scheme.secondaryContainer.withValues(alpha: 0.72)
+                          : null,
                       child: ListTile(
                         dense: true,
                         title: Text(
@@ -4383,15 +5236,31 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                 margin: const EdgeInsets.only(top: 8),
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: _isAuditioning ? kStatusWarningSoft : kSurfaceTint,
+                  color: _isAuditioning
+                      ? kStatusWarningSoft
+                      : scheme.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: _isAuditioning ? kStatusWarningAccent : kSurfaceLine,
+                    color: _isAuditioning ? kStatusWarningAccent : scheme.outline,
                   ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Builder(
+                      builder: (context) {
+                        final panelBg = _isAuditioning
+                            ? kStatusWarningSoft
+                            : scheme.surfaceContainerHigh;
+                        final panelText = panelBg.computeLuminance() > 0.56
+                            ? Colors.black.withValues(alpha: 0.88)
+                            : scheme.onSurface;
+                        final panelMuted = panelBg.computeLuminance() > 0.56
+                            ? Colors.black.withValues(alpha: 0.70)
+                            : scheme.onSurface.withValues(alpha: 0.78);
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                     Row(
                       children: [
                         Icon(
@@ -4402,12 +5271,16 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                         const SizedBox(width: 6),
                         Text(
                           _isAuditioning ? 'Hearing now' : 'Selected tone',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          style: TextStyle(fontWeight: FontWeight.w700, color: panelText),
                         ),
                         const Spacer(),
                         Text(
                           '${heardHz.toStringAsFixed(1)} Hz',
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            color: panelText,
+                          ),
                         ),
                       ],
                     ),
@@ -4417,16 +5290,24 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                       const SizedBox(height: 4),
                       Text(
                         'Tone ${selectedPitch.label} (${selectedPitch.cents >= 0 ? '+' : ''}${selectedPitch.cents} cents)',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: panelText,
+                        ),
                       ),
                       Text(
                         'Score ${selectedPointScore.toStringAsFixed(2)} exact (${roundedPointScore.toStringAsFixed(0)} rounded)',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: panelMuted,
                         ),
                       ),
                     ],
+                          ],
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -4626,26 +5507,41 @@ class _PrevalentFrequency {
 }
 
 class _LiveCapturePanel extends StatelessWidget {
-  const _LiveCapturePanel({required this.isRecording, required this.frame});
+  const _LiveCapturePanel({
+    required this.isRecording,
+    required this.frame,
+    required this.idleSurface,
+    required this.idleBorder,
+  });
 
   final bool isRecording;
   final LiveCaptureFrame? frame;
+  final Color idleSurface;
+  final Color idleBorder;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final levelDb = frame?.levelDb ?? -80;
     final levelNorm = ((levelDb + 60) / 60).clamp(0.0, 1.0);
     final estimate = frame?.estimateHz;
     final correlation = frame?.correlation;
+    final panelBg = isRecording ? kStatusWarningSoft : idleSurface;
+    final panelText = panelBg.computeLuminance() > 0.56
+        ? Colors.black.withValues(alpha: 0.88)
+        : scheme.onSurface;
+    final panelMuted = panelBg.computeLuminance() > 0.56
+        ? Colors.black.withValues(alpha: 0.70)
+        : scheme.onSurface.withValues(alpha: 0.78);
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isRecording ? kStatusWarningSoft : kSurfaceTint,
+        color: panelBg,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: isRecording ? kStatusWarningAccent : kSurfaceLine,
+          color: isRecording ? kStatusWarningAccent : idleBorder,
         ),
       ),
       child: Column(
@@ -4655,16 +5551,19 @@ class _LiveCapturePanel extends StatelessWidget {
             children: [
               Icon(
                 isRecording ? Icons.mic : Icons.mic_off,
-                color: isRecording ? kBrandBurgundy : kStatusNeutral,
+                color: isRecording ? kBrandBurgundy : panelMuted,
               ),
               const SizedBox(width: 8),
               Text(
                 isRecording ? 'Listening...' : 'Mic idle',
-                style: const TextStyle(fontWeight: FontWeight.w700),
+                style: TextStyle(fontWeight: FontWeight.w700, color: panelText),
               ),
               const Spacer(),
               if (frame != null)
-                Text('${frame!.elapsed.inSeconds}.${(frame!.elapsed.inMilliseconds % 1000) ~/ 100}s'),
+                Text(
+                  '${frame!.elapsed.inSeconds}.${(frame!.elapsed.inMilliseconds % 1000) ~/ 100}s',
+                  style: TextStyle(color: panelMuted),
+                ),
             ],
           ),
           const SizedBox(height: 8),
@@ -4689,7 +5588,7 @@ class _LiveCapturePanel extends StatelessWidget {
                     : 'Live reading: ${estimate.toStringAsFixed(1)} Hz '
                         '(strength ${((correlation ?? 0) * 100).toStringAsFixed(0)}%)')
                 : 'Recording stopped. Use "Start take" to record again.',
-            style: const TextStyle(fontSize: 12),
+            style: TextStyle(fontSize: 12, color: panelText),
           ),
         ],
       ),
@@ -4703,12 +5602,16 @@ class _AccuracySummary extends StatelessWidget {
     required this.mean,
     required this.stddev,
     required this.confidencePercent,
+    required this.surfaceColor,
+    required this.borderColor,
   });
 
   final int count;
   final double mean;
   final double stddev;
   final double confidencePercent;
+  final Color surfaceColor;
+  final Color borderColor;
 
   @override
   Widget build(BuildContext context) {
@@ -4724,9 +5627,9 @@ class _AccuracySummary extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: kSurfaceTint,
+        color: surfaceColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: kSurfaceLine),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         children: [
@@ -4762,14 +5665,19 @@ class _AccuracySummary extends StatelessWidget {
 }
 
 class _TakeBarsPainter extends CustomPainter {
-  const _TakeBarsPainter({required this.values, required this.selectedIndex});
+  const _TakeBarsPainter({
+    required this.values,
+    required this.selectedIndex,
+    required this.backgroundColor,
+  });
 
   final List<double> values;
   final int? selectedIndex;
+  final Color backgroundColor;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final bg = Paint()..color = kSurfaceTint;
+    final bg = Paint()..color = backgroundColor;
     canvas.drawRRect(
       RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(10)),
       bg,
@@ -4802,7 +5710,9 @@ class _TakeBarsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _TakeBarsPainter oldDelegate) {
-    return oldDelegate.values != values || oldDelegate.selectedIndex != selectedIndex;
+    return oldDelegate.values != values ||
+        oldDelegate.selectedIndex != selectedIndex ||
+        oldDelegate.backgroundColor != backgroundColor;
   }
 }
 
@@ -5898,7 +6808,51 @@ class _ReviewSummary extends StatelessWidget {
 }
 
 class _SettingsTab extends StatelessWidget {
-  const _SettingsTab();
+  const _SettingsTab({required this.onStartTour});
+
+  final VoidCallback onStartTour;
+
+  Future<void> _confirmDeleteFullHistory(BuildContext context) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete full history?'),
+          content: const Text(
+            'This will permanently delete all registered cane samples and reed evaluations from this device.\n\n'
+            'Before deleting, go to the Reeds tab and export a JSON backup so your data can be restored later.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: kStatusDanger),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Delete all data'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true || !context.mounted) {
+      return;
+    }
+
+    await context.read<AppController>().deleteAllHistory();
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'All cane and reed history deleted. Tip: use Reeds tab export before future resets.',
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -5946,6 +6900,12 @@ class _SettingsTab extends StatelessWidget {
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     height: 1.4,
                   ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: onStartTour,
+                  icon: const Icon(Icons.tour),
+                  label: const Text('Take tour'),
                 ),
               ],
             ),
@@ -6078,6 +7038,53 @@ class _SettingsTab extends StatelessWidget {
             ),
           ),
         ),
+        const SizedBox(height: 14),
+        Card(
+          color: kStatusDanger.withValues(alpha: 0.06),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.delete_forever, color: theme.colorScheme.error),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Danger zone',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: theme.colorScheme.error,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Delete full local history (all cane + reed instances). This action cannot be undone.',
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.35),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Backup tip: export JSON from the Reeds tab before deleting.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.78),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => _confirmDeleteFullHistory(context),
+                  icon: const Icon(Icons.delete_forever),
+                  label: const Text('Delete full history'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: theme.colorScheme.error,
+                    foregroundColor: theme.colorScheme.onError,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -6090,7 +7097,6 @@ class _AriFormulaBlock extends StatelessWidget {
     required this.surface,
     required this.outline,
   });
-
   final Color primary;
   final Color onSurface;
   final Color surface;
