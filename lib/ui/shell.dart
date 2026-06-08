@@ -1210,6 +1210,7 @@ class _BehaviorTabState extends State<_BehaviorTab> {
   Offset _focusDataPointAtScaleStart = Offset.zero;
   Size _graphCanvasSize = const Size(0, 0);
   Set<String> _selectedGraphEvaluationIds = const <String>{};
+  bool _showRecommendedTargetInfo = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1305,6 +1306,10 @@ class _BehaviorTabState extends State<_BehaviorTab> {
                                 axisColor: scheme.onSurface,
                                 labelColor: scheme.onSurface,
                                 selectedEvaluationIds: _selectedGraphEvaluationIds,
+                                showRecommendedTargetInfo: _showRecommendedTargetInfo,
+                                lightweightRendering: _graphZoom != 1 ||
+                                    _graphPan.dx.abs() > 0.01 ||
+                                    _graphPan.dy.abs() > 0.01,
                               ),
                               child: const SizedBox.expand(),
                             ),
@@ -1335,6 +1340,23 @@ class _BehaviorTabState extends State<_BehaviorTab> {
                                   tooltip: 'Reset view',
                                   onPressed: _resetGraphView,
                                   icon: const Icon(Icons.center_focus_strong),
+                                ),
+                                const SizedBox(height: 6),
+                                IconButton.filledTonal(
+                                  tooltip: _showRecommendedTargetInfo
+                                      ? 'Hide target info'
+                                      : 'Show target info',
+                                  onPressed: () {
+                                    setState(() {
+                                      _showRecommendedTargetInfo =
+                                          !_showRecommendedTargetInfo;
+                                    });
+                                  },
+                                  icon: Icon(
+                                    _showRecommendedTargetInfo
+                                        ? Icons.visibility_off
+                                        : Icons.my_location,
+                                  ),
                                 ),
                               ],
                             ),
@@ -1473,34 +1495,30 @@ class _BehaviorTabState extends State<_BehaviorTab> {
     }
 
     final mergeRadius = (22 / _graphZoom).clamp(10, 24).toDouble();
-    final clusters = <_BehaviorCluster>[];
+    final accumulators = <_BehaviorClusterAccumulator>[];
 
     for (final plotted in plottedEntries) {
-      var merged = false;
-      for (int i = 0; i < clusters.length; i++) {
-        final cluster = clusters[i];
-        if ((cluster.center - plotted.position).distance > mergeRadius) {
+      _BehaviorClusterAccumulator? nearest;
+      var nearestDistance = double.infinity;
+      for (final accumulator in accumulators) {
+        final distance = (accumulator.center - plotted.position).distance;
+        if (distance > mergeRadius || distance >= nearestDistance) {
           continue;
         }
-
-        final mergedItems = [...cluster.items, plotted];
-        final x = mergedItems.map((item) => item.position.dx).reduce((a, b) => a + b) /
-            mergedItems.length;
-        final y = mergedItems.map((item) => item.position.dy).reduce((a, b) => a + b) /
-            mergedItems.length;
-        clusters[i] = _BehaviorCluster(items: mergedItems, center: Offset(x, y));
-        merged = true;
-        break;
+        nearestDistance = distance;
+        nearest = accumulator;
       }
 
-      if (!merged) {
-        clusters.add(
-          _BehaviorCluster(items: [plotted], center: plotted.position),
-        );
+      if (nearest != null) {
+        nearest.add(plotted);
+      } else {
+        accumulators.add(_BehaviorClusterAccumulator(plotted));
       }
     }
 
-    return clusters;
+    return accumulators
+        .map((accumulator) => _BehaviorCluster(items: accumulator.items, center: accumulator.center))
+        .toList();
   }
 
   void _stepZoom(double factor) {
@@ -1773,6 +1791,24 @@ class _BehaviorCluster {
   final Offset center;
 }
 
+class _BehaviorClusterAccumulator {
+  _BehaviorClusterAccumulator(_PlottedBehaviorEntry first) {
+    add(first);
+  }
+
+  final List<_PlottedBehaviorEntry> items = <_PlottedBehaviorEntry>[];
+  double _sumX = 0;
+  double _sumY = 0;
+
+  void add(_PlottedBehaviorEntry item) {
+    items.add(item);
+    _sumX += item.position.dx;
+    _sumY += item.position.dy;
+  }
+
+  Offset get center => Offset(_sumX / items.length, _sumY / items.length);
+}
+
 class _BehaviorGraphProjection {
   const _BehaviorGraphProjection({
     required this.plotRect,
@@ -1868,6 +1904,8 @@ class _BehaviorMapPainter extends CustomPainter {
     required this.axisColor,
     required this.labelColor,
     required this.selectedEvaluationIds,
+    required this.showRecommendedTargetInfo,
+    required this.lightweightRendering,
   });
 
   final _BehaviorGraphProjection projection;
@@ -1879,6 +1917,8 @@ class _BehaviorMapPainter extends CustomPainter {
   final Color axisColor;
   final Color labelColor;
   final Set<String> selectedEvaluationIds;
+  final bool showRecommendedTargetInfo;
+  final bool lightweightRendering;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1960,19 +2000,25 @@ class _BehaviorMapPainter extends CustomPainter {
       outerPath,
       Paint()
         ..color = const Color(0xFFE85D4F).withValues(alpha: 0.26)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0),
+        ..maskFilter = lightweightRendering
+            ? null
+            : const MaskFilter.blur(BlurStyle.normal, 3.0),
     );
     canvas.drawPath(
       midPath,
       Paint()
         ..color = const Color(0xFFF2C94C).withValues(alpha: 0.30)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0),
+        ..maskFilter = lightweightRendering
+            ? null
+            : const MaskFilter.blur(BlurStyle.normal, 2.0),
     );
     canvas.drawPath(
       corePath,
       Paint()
         ..color = const Color(0xFF2E7D4F).withValues(alpha: 0.34)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.6),
+        ..maskFilter = lightweightRendering
+            ? null
+            : const MaskFilter.blur(BlurStyle.normal, 1.6),
     );
 
     final ringPaint = Paint()
@@ -2122,7 +2168,9 @@ class _BehaviorMapPainter extends CustomPainter {
           radius + 13,
           Paint()
             ..color = kBrandGold.withValues(alpha: 0.42)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+            ..maskFilter = lightweightRendering
+                ? null
+                : const MaskFilter.blur(BlurStyle.normal, 8),
         );
       }
 
@@ -2132,7 +2180,9 @@ class _BehaviorMapPainter extends CustomPainter {
         radius + 1.5,
         Paint()
           ..color = Colors.black.withValues(alpha: 0.18)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.4),
+          ..maskFilter = lightweightRendering
+              ? null
+              : const MaskFilter.blur(BlurStyle.normal, 2.4),
       );
 
       // Gold standard halo — a blurred warm glow rendered behind the dot.
@@ -2142,7 +2192,9 @@ class _BehaviorMapPainter extends CustomPainter {
           radius + 9,
           Paint()
             ..color = const Color(0xFFE2B24A).withValues(alpha: 0.55)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+            ..maskFilter = lightweightRendering
+                ? null
+                : const MaskFilter.blur(BlurStyle.normal, 6),
         );
       }
 
@@ -2270,37 +2322,39 @@ class _BehaviorMapPainter extends CustomPainter {
       Paint()..color = const Color(0xFF2E7D4F).withValues(alpha: 0.90),
     );
 
-    final callout = TextPainter(
-      text: TextSpan(
-        text:
-            'Recommended target\n${zoneModel.centerFrequency.round()} Hz\n${zoneModel.centerFlexibility.toStringAsFixed(1)} flexibility',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          height: 1.25,
+    if (showRecommendedTargetInfo) {
+      final callout = TextPainter(
+        text: TextSpan(
+          text:
+              'Recommended target\n${zoneModel.centerFrequency.round()} Hz\n${zoneModel.centerFlexibility.toStringAsFixed(1)} flexibility',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            height: 1.25,
+          ),
         ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: 130);
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: 130);
 
-    final calloutRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        (zoneCenter.dx + 18).clamp(plotRect.left + 8, plotRect.right - 152),
-        (zoneCenter.dy - 36).clamp(plotRect.top + 8, plotRect.bottom - 86),
-        144,
-        74,
-      ),
-      const Radius.circular(12),
-    );
-    canvas.drawRRect(
-      calloutRect,
-      Paint()..color = const Color(0xFF3F3A36).withValues(alpha: 0.76),
-    );
-    callout.paint(
-      canvas,
-      Offset(calloutRect.left + 12, calloutRect.top + 11),
-    );
+      final calloutRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          (zoneCenter.dx + 18).clamp(plotRect.left + 8, plotRect.right - 152),
+          (zoneCenter.dy - 36).clamp(plotRect.top + 8, plotRect.bottom - 86),
+          144,
+          74,
+        ),
+        const Radius.circular(12),
+      );
+      canvas.drawRRect(
+        calloutRect,
+        Paint()..color = const Color(0xFF3F3A36).withValues(alpha: 0.76),
+      );
+      callout.paint(
+        canvas,
+        Offset(calloutRect.left + 12, calloutRect.top + 11),
+      );
+    }
 
     canvas.restore();
   }
@@ -2439,6 +2493,8 @@ class _BehaviorMapPainter extends CustomPainter {
         oldDelegate.zoneModel != zoneModel ||
         oldDelegate.frameColor != frameColor ||
         oldDelegate.plotTintColor != plotTintColor ||
+        oldDelegate.showRecommendedTargetInfo != showRecommendedTargetInfo ||
+        oldDelegate.lightweightRendering != lightweightRendering ||
         oldDelegate.selectedEvaluationIds != selectedEvaluationIds;
   }
 }
@@ -2587,9 +2643,9 @@ class _FavoredCompromiseCard extends StatelessWidget {
                   ),
                   Text(
                     row.value,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: kBrandBurgundy,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   ),
                 ],
@@ -3370,6 +3426,100 @@ class _ReedTabState extends State<_ReedTab> {
       return true;
     }).toList();
 
+    final mixedItems = <_ReedListItem>[
+      ...filteredEvaluations.map(_ReedListItem.reviewed),
+      ...filteredPendingCanes.map(_ReedListItem.pending),
+    ];
+
+    int compareByDate(_ReedListItem a, _ReedListItem b, {required bool newestFirst}) {
+      return newestFirst
+          ? b.sortDate.compareTo(a.sortDate)
+          : a.sortDate.compareTo(b.sortDate);
+    }
+
+    mixedItems.sort((a, b) {
+      switch (_sortOrder) {
+        case 'score_high':
+          if (a.isPending != b.isPending) {
+            return a.isPending ? 1 : -1;
+          }
+          if (a.isPending && b.isPending) {
+            return compareByDate(a, b, newestFirst: true);
+          }
+          final scoreOrder = b.evaluation!.overallScore.compareTo(a.evaluation!.overallScore);
+          if (scoreOrder != 0) {
+            return scoreOrder;
+          }
+          return compareByDate(a, b, newestFirst: true);
+        case 'score_low':
+          if (a.isPending != b.isPending) {
+            return a.isPending ? 1 : -1;
+          }
+          if (a.isPending && b.isPending) {
+            return compareByDate(a, b, newestFirst: true);
+          }
+          final scoreOrder = a.evaluation!.overallScore.compareTo(b.evaluation!.overallScore);
+          if (scoreOrder != 0) {
+            return scoreOrder;
+          }
+          return compareByDate(a, b, newestFirst: true);
+        case 'gold_first':
+          if (a.isPending != b.isPending) {
+            return a.isPending ? 1 : -1;
+          }
+          if (a.isPending && b.isPending) {
+            return compareByDate(a, b, newestFirst: true);
+          }
+          final goldOrder = (b.evaluation!.goldStandard ? 1 : 0) -
+              (a.evaluation!.goldStandard ? 1 : 0);
+          if (goldOrder != 0) {
+            return goldOrder;
+          }
+          return compareByDate(a, b, newestFirst: true);
+        case 'oldest':
+          return compareByDate(a, b, newestFirst: false);
+        case 'newest':
+        default:
+          return compareByDate(a, b, newestFirst: true);
+      }
+    });
+
+    final reedListWidgets = <Widget>[];
+    var pendingHeaderShown = false;
+    for (final item in mixedItems) {
+      if (item.isPending) {
+        if (!pendingHeaderShown) {
+          reedListWidgets.addAll([
+            const Text(
+              'Pending Reviews',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+          ]);
+          pendingHeaderShown = true;
+        }
+        reedListWidgets.add(
+          _PendingReedCard(
+            sample: item.pendingCane!,
+            onTap: () => _openPendingStats(context, item.pendingCane!),
+          ),
+        );
+        continue;
+      }
+
+      final evaluation = item.evaluation!;
+      final cane = controller.findCane(evaluation.caneId);
+      reedListWidgets.add(
+        _ReedCard(
+          evaluation: evaluation,
+          cane: cane,
+          onTap: () => _openReedStats(context, evaluation, cane),
+          onEdit: () => _editReed(context, evaluation),
+          onDelete: () => _deleteReed(context, evaluation),
+        ),
+      );
+    }
+
     return Stack(
       children: [
         ListView(
@@ -3497,21 +3647,7 @@ class _ReedTabState extends State<_ReedTab> {
               ),
             ),
             const SizedBox(height: 8),
-            if (filteredPendingCanes.isNotEmpty) ...[
-              const Text(
-                'Pending Reviews',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 6),
-              ...filteredPendingCanes.map(
-                (sample) => _PendingReedCard(
-                  sample: sample,
-                  onTap: () => _openPendingStats(context, sample),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-            if (filteredEvaluations.isEmpty && filteredPendingCanes.isEmpty)
+            if (reedListWidgets.isEmpty)
               const Card(
                 child: Padding(
                   padding: EdgeInsets.all(16),
@@ -3519,16 +3655,7 @@ class _ReedTabState extends State<_ReedTab> {
                 ),
               )
             else
-              ...filteredEvaluations.map((evaluation) {
-                final cane = controller.findCane(evaluation.caneId);
-                return _ReedCard(
-                  evaluation: evaluation,
-                  cane: cane,
-                  onTap: () => _openReedStats(context, evaluation, cane),
-                  onEdit: () => _editReed(context, evaluation),
-                  onDelete: () => _deleteReed(context, evaluation),
-                );
-              }),
+              ...reedListWidgets,
           ],
         ),
         Positioned(
@@ -3655,6 +3782,18 @@ class _ReedTabState extends State<_ReedTab> {
       );
     }
   }
+}
+
+class _ReedListItem {
+  const _ReedListItem.reviewed(this.evaluation) : pendingCane = null;
+  const _ReedListItem.pending(this.pendingCane) : evaluation = null;
+
+  final ReedEvaluation? evaluation;
+  final CaneSample? pendingCane;
+
+  bool get isPending => pendingCane != null;
+
+  DateTime get sortDate => isPending ? pendingCane!.purchaseDate : evaluation!.createdAt;
 }
 
 class AddCanePage extends StatefulWidget {
