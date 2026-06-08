@@ -45,7 +45,7 @@ class BassoonCaneApp extends StatelessWidget {
       child: Consumer<ThemeController>(
         builder: (context, themeController, _) {
           return MaterialApp(
-            title: 'ReedLab',
+            title: 'ReedLab for Bassoon',
             debugShowCheckedModeBanner: false,
             theme: _buildTheme(themeController.variant),
             home: const ShellPage(),
@@ -265,10 +265,29 @@ ThemeData _buildTheme(AppThemeVariant variant) {
     inputDecorationTheme: InputDecorationTheme(
       border: const OutlineInputBorder(),
       isDense: true,
+      filled: true,
+      fillColor: p.surfaceMid,
       focusedBorder: OutlineInputBorder(
         borderSide: BorderSide(color: p.primary, width: 1.6),
       ),
+      enabledBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: p.outline, width: 1),
+      ),
+      hintStyle: TextStyle(color: p.onSurface.withValues(alpha: 0.7)),
+      floatingLabelStyle: TextStyle(color: p.primary, fontWeight: FontWeight.w600),
       labelStyle: TextStyle(color: p.primary),
+    ),
+    dropdownMenuTheme: DropdownMenuThemeData(
+      textStyle: TextStyle(color: p.onSurface),
+      menuStyle: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(p.surfaceHigh),
+        side: WidgetStatePropertyAll(BorderSide(color: p.outline)),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: p.surfaceMid,
+        hintStyle: TextStyle(color: p.onSurface.withValues(alpha: 0.7)),
+      ),
     ),
     cardTheme: CardThemeData(
       color: p.cardColor,

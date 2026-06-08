@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -28,6 +29,30 @@ class LiveCaptureFrame {
   final Duration elapsed;
 }
 
+class ResonanceCandidate {
+  const ResonanceCandidate({
+    required this.hz,
+    required this.score,
+    required this.label,
+  });
+
+  final double hz;
+  final double score; // 0..1
+  final String label;
+}
+
+class ResonanceCaptureResult {
+  const ResonanceCaptureResult({
+    required this.hz,
+    required this.correlation,
+    required this.candidates,
+  });
+
+  final double hz;
+  final double correlation;
+  final List<ResonanceCandidate> candidates;
+}
+
 class ResonanceCaptureService {
   ResonanceCaptureService({AudioRecorder? recorder, AudioPlayer? player})
       : _recorder = recorder ?? AudioRecorder(),
@@ -40,12 +65,19 @@ class ResonanceCaptureService {
   static const int _analysisWindow = 4096;
   static const int _maxLiveSamples = _liveSampleRate * 8;
 
-  // Continuous audition tone: a seamlessly-looping base sine that we retune in
-  // real time via setPlaybackRate so the slider doesn't have to start/stop
-  // short clips (which causes audible glitches).
-  static const double _baseToneHz = 1000.0;
-  File? _continuousToneFile;
+  // Continuous audition tone: we generate a seamlessly-looping sine at the
+  // EXACT requested frequency and play it on loop. This guarantees the pitch
+  // you hear matches the displayed frequency (audioplayers' setPlaybackRate is
+  // unreliable for pitch on iOS, which previously caused mismatches).
+  static const int _toneSampleRate = 44100;
   bool _continuousPlaying = false;
+  Future<void> _playbackSerial = Future<void>.value();
+  final Map<int, File> _toneFileCache = {};
+  int? _currentAuditionKey;
+  double? _pendingAuditionHz;
+  bool _isApplyingAudition = false;
+  bool _auditionActive = false;
+  int _auditionGeneration = 0;
 
   StreamSubscription<Uint8List>? _streamSubscription;
   StreamController<LiveCaptureFrame>? _frameController;
@@ -78,7 +110,12 @@ class ResonanceCaptureService {
 
     _streamSubscription = stream.listen(
       _appendPcm16,
-      onError: (_) {},
+      onError: (error) {
+        developer.log(
+          'Live capture stream error: $error',
+          name: 'ResonanceCaptureService',
+        );
+      },
       cancelOnError: false,
     );
 
@@ -135,7 +172,7 @@ class ResonanceCaptureService {
 
   /// Stops the live capture and returns the final estimate from the full take
   /// along with its normalized autocorrelation strength (0..1).
-  Future<({double hz, double correlation})?> stopLiveCapture() async {
+  Future<ResonanceCaptureResult?> stopLiveCapture() async {
     _analyzeTimer?.cancel();
     _analyzeTimer = null;
 
@@ -144,8 +181,11 @@ class ResonanceCaptureService {
 
     try {
       await _recorder.stop();
-    } catch (_) {
-      // ignore – stop errors should not block analysis
+    } catch (error) {
+      developer.log(
+        'Recorder stop error during analysis: $error',
+        name: 'ResonanceCaptureService',
+      );
     }
 
     final c = _frameController;
@@ -160,16 +200,11 @@ class ResonanceCaptureService {
       return null;
     }
 
-    final estimate = _estimateFundamental(
-      samples,
-      _liveSampleRate,
-      minFrequencyHz: 60,
-      maxFrequencyHz: 2400,
-    );
-    if (estimate == null) {
+    final result = _analyzeResonanceCandidates(samples, _liveSampleRate);
+    if (result == null) {
       return null;
     }
-    return (hz: estimate.hz, correlation: estimate.correlation);
+    return result;
   }
 
   /// Plays a short sine tone at [hz] so the operator can audit the chosen
@@ -190,75 +225,169 @@ class ResonanceCaptureService {
     }
 
     _continuousPlaying = false;
-    await _player.stop();
+    try {
+      await _player.stop();
+    } catch (error) {
+      developer.log(
+        'Failed to stop player before short tone: $error',
+        name: 'ResonanceCaptureService',
+      );
+    }
     try {
       await _player.setReleaseMode(ReleaseMode.release);
       await _player.setPlaybackRate(1.0);
-    } catch (_) {}
-    await _player.play(DeviceFileSource(file.path));
-  }
-
-  /// Starts a seamless looping sine tone whose pitch can be retuned on the fly
-  /// via [setContinuousToneHz]. Used by the slider for glitch-free auditioning.
-  Future<void> startContinuousTone(double hz) async {
-    await _ensureBaseTone();
-    if (!_continuousPlaying) {
-      try {
-        await _player.stop();
-      } catch (_) {}
-      try {
-        await _player.setReleaseMode(ReleaseMode.loop);
-        await _player.setVolume(0.5);
-      } catch (_) {}
-      await _player.play(DeviceFileSource(_continuousToneFile!.path));
-      _continuousPlaying = true;
+    } catch (error) {
+      developer.log(
+        'Failed to configure player for short tone: $error',
+        name: 'ResonanceCaptureService',
+      );
     }
-    await setContinuousToneHz(hz);
+    try {
+      await _player.play(DeviceFileSource(file.path));
+    } catch (error) {
+      developer.log(
+        'Failed to play short tone at ${hz.toStringAsFixed(1)} Hz: $error',
+        name: 'ResonanceCaptureService',
+      );
+    }
   }
 
-  /// Retunes the currently-playing continuous tone without restarting it.
-  Future<void> setContinuousToneHz(double hz) async {
+  /// Starts (or retunes) a seamless looping sine tone at the EXACT [hz] so the
+  /// slider audition always matches the displayed frequency. Rapid updates are
+  /// coalesced so dragging stays responsive without audio cutting out.
+  Future<void> auditionToneHz(double hz) async {
     if (hz <= 0 || hz.isNaN || hz.isInfinite) {
       return;
     }
-    final rate = (hz / _baseToneHz).clamp(0.5, 2.5);
+    _auditionActive = true;
+    final generation = _auditionGeneration;
+    _pendingAuditionHz = hz;
+    if (_isApplyingAudition) {
+      return;
+    }
+
+    _isApplyingAudition = true;
     try {
-      await _player.setPlaybackRate(rate);
-    } catch (_) {}
+      while (_pendingAuditionHz != null && _auditionActive && generation == _auditionGeneration) {
+        final next = _pendingAuditionHz!;
+        _pendingAuditionHz = null;
+        await _applyAudition(next, generation);
+      }
+    } finally {
+      _isApplyingAudition = false;
+    }
+  }
+
+  Future<void> _applyAudition(double hz, int generation) async {
+    if (!_auditionActive || generation != _auditionGeneration) {
+      return;
+    }
+
+    final key = hz.round();
+    if (_currentAuditionKey == key && _continuousPlaying) {
+      return;
+    }
+
+    final File file;
+    try {
+      file = await _ensureToneFile(key.toDouble());
+    } catch (error) {
+      developer.log(
+        'Failed to prepare audition tone for $key Hz: $error',
+        name: 'ResonanceCaptureService',
+      );
+      return;
+    }
+
+    if (!_auditionActive || generation != _auditionGeneration) {
+      return;
+    }
+
+    try {
+      if (!_continuousPlaying) {
+        await _player.setReleaseMode(ReleaseMode.loop);
+        await _player.setVolume(0.6);
+        await _player.setPlaybackRate(1.0);
+      }
+
+      if (!_auditionActive || generation != _auditionGeneration) {
+        return;
+      }
+
+      await _player.play(DeviceFileSource(file.path));
+
+      if (!_auditionActive || generation != _auditionGeneration) {
+        try {
+          await _player.stop();
+        } catch (_) {}
+        return;
+      }
+
+      _continuousPlaying = true;
+      _currentAuditionKey = key;
+    } catch (error) {
+      developer.log(
+        'Failed to play audition tone at $key Hz: $error',
+        name: 'ResonanceCaptureService',
+      );
+      _continuousPlaying = false;
+      _currentAuditionKey = null;
+    }
   }
 
   Future<void> stopContinuousTone() async {
-    if (!_continuousPlaying) return;
-    _continuousPlaying = false;
-    try {
-      await _player.setReleaseMode(ReleaseMode.release);
-      await _player.setPlaybackRate(1.0);
-      await _player.stop();
-    } catch (_) {}
+    _auditionActive = false;
+    _auditionGeneration++;
+    _pendingAuditionHz = null;
+    await _serializePlayback(() async {
+      if (!_continuousPlaying) return;
+      _continuousPlaying = false;
+      _currentAuditionKey = null;
+      try {
+        await _player.setReleaseMode(ReleaseMode.release);
+        await _player.stop();
+      } catch (error) {
+        developer.log(
+          'Failed to stop continuous tone cleanly: $error',
+          name: 'ResonanceCaptureService',
+        );
+      }
+    });
   }
 
-  Future<void> _ensureBaseTone() async {
-    if (_continuousToneFile != null && await _continuousToneFile!.exists()) {
-      return;
+  Future<File> _ensureToneFile(double hz) async {
+    final key = hz.round();
+    final cached = _toneFileCache[key];
+    if (cached != null && await cached.exists()) {
+      return cached;
     }
     final tempDir = await getTemporaryDirectory();
-    final file = File(
-      '${tempDir.path}/audit_base_tone_${_baseToneHz.toStringAsFixed(0)}.wav',
-    );
+    final file = File('${tempDir.path}/audit_loop_${key}hz.wav');
     if (!await file.exists()) {
       final bytes = _buildLoopableSineWav(
-        _baseToneHz,
-        const Duration(seconds: 5),
-        sampleRate: 48000,
+        key.toDouble(),
+        const Duration(milliseconds: 400),
+        sampleRate: _toneSampleRate,
       );
       await file.writeAsBytes(bytes, flush: true);
     }
-    _continuousToneFile = file;
+    _toneFileCache[key] = file;
+    return file;
   }
 
   Future<void> stopPlayback() async {
+    _auditionActive = false;
+    _auditionGeneration++;
     _continuousPlaying = false;
-    await _player.stop();
+    _pendingAuditionHz = null;
+    try {
+      await _player.stop();
+    } catch (error) {
+      developer.log(
+        'Failed to stop playback: $error',
+        name: 'ResonanceCaptureService',
+      );
+    }
   }
 
   Future<void> dispose() async {
@@ -266,10 +395,27 @@ class ResonanceCaptureService {
     await stopContinuousTone();
     try {
       await _recorder.dispose();
-    } catch (_) {}
+    } catch (error) {
+      developer.log(
+        'Failed to dispose recorder: $error',
+        name: 'ResonanceCaptureService',
+      );
+    }
     try {
       await _player.dispose();
-    } catch (_) {}
+    } catch (error) {
+      developer.log(
+        'Failed to dispose player: $error',
+        name: 'ResonanceCaptureService',
+      );
+    }
+  }
+
+  Future<void> _serializePlayback(Future<void> Function() action) {
+    _playbackSerial = _playbackSerial
+        .catchError((_) {})
+        .then((_) => action());
+    return _playbackSerial;
   }
 
   Future<void> _disposeStreaming() async {
@@ -295,7 +441,7 @@ class ResonanceCaptureService {
   }
 
   Uint8List _buildSineWav(double hz, Duration duration) {
-    const sampleRate = 44100;
+    const sampleRate = _toneSampleRate;
     final totalSamples = (sampleRate * duration.inMilliseconds / 1000).round();
     final attack = (sampleRate * 0.02).round();
     final release = (sampleRate * 0.05).round();
@@ -447,6 +593,286 @@ class ResonanceCaptureService {
     );
   }
 
+  ResonanceCaptureResult? _analyzeResonanceCandidates(
+    List<double> samples,
+    int sampleRate,
+  ) {
+    if (samples.length < 2048) {
+      return null;
+    }
+
+    final trimmed = _trimLeadingSilence(samples, threshold: 0.02);
+    if (trimmed.length < 2048) {
+      return null;
+    }
+
+    final analysis = _selectSteadyWindow(trimmed, sampleRate);
+    if (analysis.length < 2048) {
+      return null;
+    }
+
+    final spectralCandidates = _findSpectralCandidates(
+      analysis,
+      sampleRate,
+      minHz: 900,
+      maxHz: 2000,
+      stepHz: 5,
+      top: 7,
+    );
+    final acCandidates = _findAutocorrelationCandidates(
+      analysis,
+      sampleRate,
+      minFrequencyHz: 900,
+      maxFrequencyHz: 2000,
+      top: 5,
+    );
+
+    final merged = _mergeCandidates(
+      spectralCandidates: spectralCandidates,
+      acCandidates: acCandidates,
+      top: 5,
+    );
+    if (merged.isEmpty) {
+      return null;
+    }
+
+    final strongest = merged.first;
+    return ResonanceCaptureResult(
+      hz: strongest.hz,
+      correlation: strongest.score,
+      candidates: merged,
+    );
+  }
+
+  List<double> _selectSteadyWindow(List<double> input, int sampleRate) {
+    final skipSamples = (sampleRate * 0.10).round();
+    final windowSamples = (sampleRate * 0.25).round();
+    if (input.length <= skipSamples + 2048) {
+      return input;
+    }
+
+    final from = math.min(skipSamples, input.length - 2048);
+    final to = math.min(from + windowSamples, input.length);
+    return input.sublist(from, to);
+  }
+
+  List<ResonanceCandidate> _findSpectralCandidates(
+    List<double> input,
+    int sampleRate, {
+    required double minHz,
+    required double maxHz,
+    required double stepHz,
+    required int top,
+  }) {
+    final n = math.min(input.length, 8192);
+    if (n < 1024) {
+      return const [];
+    }
+
+    final start = input.length - n;
+    final windowed = List<double>.generate(n, (index) {
+      final w = 0.5 - 0.5 * math.cos((2 * math.pi * index) / (n - 1));
+      return input[start + index] * w;
+    });
+
+    final bins = <_SpectralBin>[];
+    for (double hz = minHz; hz <= maxHz; hz += stepHz) {
+      final mag = _magnitudeAtFrequency(windowed, sampleRate, hz);
+      bins.add(_SpectralBin(hz: hz, magnitude: mag));
+    }
+
+    if (bins.length < 3) {
+      return const [];
+    }
+
+    final localPeaks = <_SpectralBin>[];
+    for (int i = 1; i < bins.length - 1; i++) {
+      final prev = bins[i - 1];
+      final curr = bins[i];
+      final next = bins[i + 1];
+      if (curr.magnitude > prev.magnitude && curr.magnitude > next.magnitude) {
+        localPeaks.add(curr);
+      }
+    }
+
+    localPeaks.sort((a, b) => b.magnitude.compareTo(a.magnitude));
+    if (localPeaks.isEmpty) {
+      return const [];
+    }
+
+    final peakRef = localPeaks.first.magnitude <= 0 ? 1.0 : localPeaks.first.magnitude;
+    return localPeaks.take(top).map((peak) {
+      final harmonicScore = _harmonicConsistency(windowed, sampleRate, peak.hz);
+      final spectralScore = (peak.magnitude / peakRef).clamp(0.0, 1.0);
+      return ResonanceCandidate(
+        hz: peak.hz,
+        score: (spectralScore * 0.7 + harmonicScore * 0.3).clamp(0.0, 1.0),
+        label: 'spectral',
+      );
+    }).toList();
+  }
+
+  double _magnitudeAtFrequency(List<double> samples, int sampleRate, double hz) {
+    double real = 0;
+    double imag = 0;
+    final omega = 2 * math.pi * hz / sampleRate;
+    for (int i = 0; i < samples.length; i++) {
+      final angle = omega * i;
+      final value = samples[i];
+      real += value * math.cos(angle);
+      imag -= value * math.sin(angle);
+    }
+    return math.sqrt(real * real + imag * imag);
+  }
+
+  double _harmonicConsistency(List<double> samples, int sampleRate, double fundamental) {
+    if (fundamental <= 0) {
+      return 0;
+    }
+    final m1 = _magnitudeAtFrequency(samples, sampleRate, fundamental);
+    if (m1 <= 1e-9) {
+      return 0;
+    }
+    final m2 = _magnitudeAtFrequency(samples, sampleRate, fundamental * 2);
+    final m3 = _magnitudeAtFrequency(samples, sampleRate, fundamental * 3);
+    final ratio = ((m2 + m3) / (2 * m1)).clamp(0.0, 1.0);
+    return ratio;
+  }
+
+  List<ResonanceCandidate> _findAutocorrelationCandidates(
+    List<double> input,
+    int sampleRate, {
+    required int minFrequencyHz,
+    required int maxFrequencyHz,
+    required int top,
+  }) {
+    final n = math.min(input.length, 8192);
+    if (n < 2048) {
+      return const [];
+    }
+
+    final start = input.length - n;
+    final windowed = List<double>.generate(n, (index) {
+      final w = 0.5 - 0.5 * math.cos((2 * math.pi * index) / (n - 1));
+      return input[start + index] * w;
+    });
+
+    final minLag = (sampleRate / maxFrequencyHz).floor().clamp(1, n - 1);
+    final maxLag = (sampleRate / minFrequencyHz).floor().clamp(minLag + 1, n - 1);
+
+    final peaks = <_AcfPeak>[];
+    for (int lag = minLag; lag <= maxLag; lag++) {
+      double correlation = 0;
+      double energyA = 0;
+      double energyB = 0;
+
+      for (int i = 0; i < n - lag; i++) {
+        final a = windowed[i];
+        final b = windowed[i + lag];
+        correlation += a * b;
+        energyA += a * a;
+        energyB += b * b;
+      }
+
+      final norm = math.sqrt(energyA * energyB);
+      if (norm <= 1e-9) {
+        continue;
+      }
+
+      final normalized = correlation / norm;
+      peaks.add(_AcfPeak(lag: lag, correlation: normalized));
+    }
+
+    if (peaks.length < 3) {
+      return const [];
+    }
+
+    final localPeaks = <_AcfPeak>[];
+    for (int i = 1; i < peaks.length - 1; i++) {
+      final prev = peaks[i - 1];
+      final curr = peaks[i];
+      final next = peaks[i + 1];
+      if (curr.correlation > prev.correlation && curr.correlation > next.correlation) {
+        localPeaks.add(curr);
+      }
+    }
+
+    localPeaks.sort((a, b) => b.correlation.compareTo(a.correlation));
+    return localPeaks.take(top).map((peak) {
+      final hz = sampleRate / peak.lag;
+      return ResonanceCandidate(
+        hz: hz,
+        score: peak.correlation.clamp(0.0, 1.0),
+        label: 'autocorrelation',
+      );
+    }).toList();
+  }
+
+  List<ResonanceCandidate> _mergeCandidates({
+    required List<ResonanceCandidate> spectralCandidates,
+    required List<ResonanceCandidate> acCandidates,
+    required int top,
+  }) {
+    final all = <ResonanceCandidate>[
+      ...spectralCandidates,
+      ...acCandidates,
+    ].where((candidate) => candidate.hz >= 900 && candidate.hz <= 2000).toList();
+
+    if (all.isEmpty) {
+      return const [];
+    }
+
+    all.sort((a, b) => a.hz.compareTo(b.hz));
+    const toleranceHz = 12.0;
+
+    final clusters = <List<ResonanceCandidate>>[];
+    for (final candidate in all) {
+      if (clusters.isEmpty) {
+        clusters.add([candidate]);
+        continue;
+      }
+      final lastCluster = clusters.last;
+      final center =
+          lastCluster.fold<double>(0, (sum, c) => sum + c.hz) / lastCluster.length;
+      if ((candidate.hz - center).abs() <= toleranceHz) {
+        lastCluster.add(candidate);
+      } else {
+        clusters.add([candidate]);
+      }
+    }
+
+    final merged = clusters.map((cluster) {
+      final scoreWeight = cluster.fold<double>(0, (sum, c) => sum + c.score);
+      final safeWeight = scoreWeight <= 1e-9 ? cluster.length.toDouble() : scoreWeight;
+      final weightedHz = cluster.fold<double>(
+            0,
+            (sum, c) => sum + c.hz * (c.score <= 1e-9 ? 1 : c.score),
+          ) /
+          safeWeight;
+
+      final spectralBoost = cluster.where((c) => c.label == 'spectral').length * 0.10;
+      final acBoost = cluster.where((c) => c.label == 'autocorrelation').length * 0.08;
+      final confidence = (scoreWeight / cluster.length + spectralBoost + acBoost)
+          .clamp(0.0, 1.0);
+
+      return ResonanceCandidate(
+        hz: weightedHz,
+        score: confidence,
+        label: 'merged',
+      );
+    }).toList();
+
+    merged.sort((a, b) {
+      final byScore = b.score.compareTo(a.score);
+      if (byScore != 0) {
+        return byScore;
+      }
+      return a.hz.compareTo(b.hz);
+    });
+
+    return merged.take(top).toList();
+  }
+
   List<double> _trimLeadingSilence(List<double> input, {required double threshold}) {
     int start = 0;
     while (start < input.length && input[start].abs() < threshold) {
@@ -466,5 +892,19 @@ class _PitchEstimate {
   const _PitchEstimate({required this.hz, required this.correlation});
 
   final double hz;
+  final double correlation;
+}
+
+class _SpectralBin {
+  const _SpectralBin({required this.hz, required this.magnitude});
+
+  final double hz;
+  final double magnitude;
+}
+
+class _AcfPeak {
+  const _AcfPeak({required this.lag, required this.correlation});
+
+  final int lag;
   final double correlation;
 }

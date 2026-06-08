@@ -718,14 +718,16 @@ class _TopPerformerCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               height: 1.35,
-              color: Colors.black.withValues(alpha: 0.75),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75),
             ),
           ),
           const SizedBox(height: 12),
           if (!hasData)
             Text(
               'Log a few reeds (with linked cane measurements) to unlock your personal profile.',
-              style: TextStyle(color: Colors.black.withValues(alpha: 0.7)),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72),
+              ),
             )
           else ...[
             Container(
@@ -825,6 +827,7 @@ class _BehaviorTabState extends State<_BehaviorTab> {
                 builder: (context, constraints) {
                   final canvasSize = Size(constraints.maxWidth, 380);
                   _graphCanvasSize = canvasSize;
+                  final scheme = Theme.of(context).colorScheme;
                   final projection = _BehaviorGraphProjection.fromPoints(
                     size: canvasSize,
                     points: graphDataPoints,
@@ -865,6 +868,8 @@ class _BehaviorTabState extends State<_BehaviorTab> {
                                 clusters: clusters,
                                 livePoint: null,
                                 zoneModel: model,
+                                axisColor: scheme.onSurface,
+                                labelColor: scheme.onSurface,
                               ),
                               child: const SizedBox.expand(),
                             ),
@@ -1380,12 +1385,16 @@ class _BehaviorMapPainter extends CustomPainter {
     required this.clusters,
     required this.livePoint,
     required this.zoneModel,
+    required this.axisColor,
+    required this.labelColor,
   });
 
   final _BehaviorGraphProjection projection;
   final List<_BehaviorCluster> clusters;
   final _BehaviorPoint? livePoint;
   final _ZoneModel zoneModel;
+  final Color axisColor;
+  final Color labelColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1461,7 +1470,7 @@ class _BehaviorMapPainter extends CustomPainter {
     }
 
     final axisPaint = Paint()
-      ..color = kBrandBurgundyDeep.withValues(alpha: 0.7)
+      ..color = axisColor.withValues(alpha: 0.82)
       ..strokeWidth = 1.2;
     canvas.drawLine(
       Offset(plotRect.left, plotRect.bottom),
@@ -1478,8 +1487,8 @@ class _BehaviorMapPainter extends CustomPainter {
       final tp = TextPainter(
         text: TextSpan(
           text: text,
-          style: const TextStyle(
-            color: kInk,
+          style: TextStyle(
+            color: labelColor,
             fontSize: 11,
             fontWeight: FontWeight.w600,
           ),
@@ -1498,14 +1507,61 @@ class _BehaviorMapPainter extends CustomPainter {
       canvas.restore();
     }
 
+    String formatTick(double value) {
+      final rounded = value.roundToDouble();
+      final isWhole = (value - rounded).abs() < 0.05;
+      return isWhole ? rounded.toInt().toString() : value.toStringAsFixed(1);
+    }
+
+    const tickCount = 4;
+    final tickPaint = Paint()
+      ..color = axisColor.withValues(alpha: 0.82)
+      ..strokeWidth = 1;
+
+    for (int i = 0; i <= tickCount; i++) {
+      final t = i / tickCount;
+      final x = plotRect.left + plotRect.width * t;
+      final frequencyValue = projection.minFrequency +
+          (projection.maxFrequency - projection.minFrequency) * t;
+
+      canvas.drawLine(
+        Offset(x, plotRect.bottom),
+        Offset(x, plotRect.bottom + 4),
+        tickPaint,
+      );
+      drawLabel(
+        formatTick(frequencyValue),
+        Offset(x, plotRect.bottom + 14),
+        center: true,
+      );
+    }
+
+    for (int i = 0; i <= tickCount; i++) {
+      final t = i / tickCount;
+      final y = plotRect.bottom - plotRect.height * t;
+      final flexibilityValue = projection.minFlexibility +
+          (projection.maxFlexibility - projection.minFlexibility) * t;
+
+      canvas.drawLine(
+        Offset(plotRect.left - 4, y),
+        Offset(plotRect.left, y),
+        tickPaint,
+      );
+      drawLabel(
+        formatTick(flexibilityValue),
+        Offset(plotRect.left - 9, y),
+        center: true,
+      );
+    }
+
     drawLabel(
       'Cane Tone: higher->lower',
-      Offset(plotRect.center.dx, plotRect.bottom + 10),
+      Offset(plotRect.center.dx, plotRect.bottom + 30),
       center: true,
     );
     drawLabel(
       'Flexibility: less->more',
-      Offset(plotRect.left - 42, plotRect.center.dy),
+      Offset(plotRect.left - 52, plotRect.center.dy),
       center: true,
       rotation: -math.pi / 2,
     );
@@ -1747,7 +1803,7 @@ class _FavoredCompromiseCard extends StatelessWidget {
             'Score-weighted target from your $successCount successful reed${successCount == 1 ? '' : 's'} (avg ${p.avgScore.toStringAsFixed(1)}/10).',
             style: TextStyle(
               fontSize: 13,
-              color: Colors.black.withValues(alpha: 0.65),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72),
             ),
           ),
           const SizedBox(height: 12),
@@ -1778,7 +1834,7 @@ class _FavoredCompromiseCard extends StatelessWidget {
             'Aim for these values when selecting and shaping new cane to maximize your chance of a successful reed.',
             style: TextStyle(
               fontSize: 12.5,
-              color: Colors.black.withValues(alpha: 0.6),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.68),
               height: 1.35,
             ),
           ),
@@ -2916,7 +2972,10 @@ class _AddCanePageState extends State<AddCanePage> {
                     const SizedBox(height: 4),
                     Text(
                       current.helper!,
-                      style: TextStyle(fontSize: 13, color: Colors.black.withValues(alpha: 0.65)),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72),
+                      ),
                     ),
                   ],
                 ],
@@ -3514,6 +3573,7 @@ class _AddCanePageState extends State<AddCanePage> {
     final result = await showModalBottomSheet<_FrequencyCaptureResult>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       builder: (_) => _FrequencyCaptureSheet(initialTakes: _resonanceTakesHz),
     );
 
@@ -3924,8 +3984,11 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
 
   late List<double> _takes;
   final List<double> _takeConfidences = []; // 0..1 per take
+  final List<List<ResonanceCandidate>> _takeCandidates = [];
   int? _selectedIndex;
   bool _isRecording = false;
+  bool _isAuditioning = false;
+  double _lastDragHz = 1200;
   StreamSubscription<LiveCaptureFrame>? _liveSub;
   LiveCaptureFrame? _liveFrame;
   double _sliderHz = 1200;
@@ -3936,6 +3999,7 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
     _takes = [...widget.initialTakes];
     for (int i = 0; i < _takes.length; i++) {
       _takeConfidences.add(0); // unknown confidence for pre-existing takes
+      _takeCandidates.add(const []);
     }
     if (_takes.isNotEmpty) {
       _selectedIndex = _takes.length - 1;
@@ -3956,6 +4020,7 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
   void _setManual(double hz) {
     final clamped = hz.clamp(_minHz, _maxHz);
     _sliderHz = clamped;
+    _lastDragHz = clamped;
     _manualController.text = clamped.toStringAsFixed(1);
   }
 
@@ -3983,14 +4048,97 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
     return (raw * 70 + sampleBoost * 30).clamp(0.0, 100.0);
   }
 
+  List<_PrevalentFrequency> get _prevalentCandidates {
+    if (_takes.isEmpty) {
+      return const [];
+    }
+
+    final clusters = <_PrevalenceAccumulator>[];
+    const clusterToleranceHz = 12.0;
+
+    for (int takeIndex = 0; takeIndex < _takes.length; takeIndex++) {
+      final takeConfidence =
+          _takeConfidences.length > takeIndex ? _takeConfidences[takeIndex] : 0.0;
+      final baselineWeight = math.max(0.25, takeConfidence);
+
+      final ranked = (_takeCandidates.length > takeIndex &&
+              _takeCandidates[takeIndex].isNotEmpty)
+          ? _takeCandidates[takeIndex].take(5).toList()
+          : [
+              ResonanceCandidate(
+                hz: _takes[takeIndex],
+                score: baselineWeight,
+                label: 'legacy',
+              ),
+            ];
+
+      for (int rank = 0; rank < ranked.length; rank++) {
+        final candidate = ranked[rank];
+        final rankWeight = math.max(0.35, 1.0 - (rank * 0.12));
+        final weight = math.max(0.10, candidate.score) * rankWeight;
+
+        _PrevalenceAccumulator? nearest;
+        double nearestDistance = double.infinity;
+        for (final cluster in clusters) {
+          final distance = (cluster.centerHz - candidate.hz).abs();
+          if (distance <= clusterToleranceHz && distance < nearestDistance) {
+            nearest = cluster;
+            nearestDistance = distance;
+          }
+        }
+
+        if (nearest == null) {
+          final cluster = _PrevalenceAccumulator();
+          cluster.add(candidate.hz, weight, takeIndex);
+          clusters.add(cluster);
+        } else {
+          nearest.add(candidate.hz, weight, takeIndex);
+        }
+      }
+    }
+
+    final maxWeight = clusters.fold<double>(
+      0,
+      (current, cluster) => math.max(current, cluster.totalWeight),
+    );
+    final safeMax = maxWeight <= 1e-9 ? 1.0 : maxWeight;
+
+    final prevalent = clusters.map((cluster) {
+      return _PrevalentFrequency(
+        hz: cluster.centerHz,
+        score: (cluster.totalWeight / safeMax).clamp(0.0, 1.0),
+        supportTakes: cluster.supportTakeCount,
+      );
+    }).toList();
+
+    prevalent.sort((a, b) {
+      final bySupport = b.supportTakes.compareTo(a.supportTakes);
+      if (bySupport != 0) {
+        return bySupport;
+      }
+      final byScore = b.score.compareTo(a.score);
+      if (byScore != 0) {
+        return byScore;
+      }
+      return a.hz.compareTo(b.hz);
+    });
+
+    return prevalent.take(5).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final manualValue = _tryParseNumber(_manualController.text);
-    final selectedPitch =
-      manualValue != null && manualValue > 0 ? _pitchFromFrequency(manualValue) : null;
-    final selectedPointScore = manualValue != null && manualValue > 0
-      ? LauritzenToneScale.continuousIndexFromFrequency(manualValue)
-      : null;
+    final heardHz = _isAuditioning
+        ? _sliderHz
+        : (manualValue != null && manualValue > 0 ? manualValue : _sliderHz);
+    final selectedPitch = heardHz > 0 ? _pitchFromFrequency(heardHz) : null;
+    final selectedPointScore = heardHz > 0
+        ? LauritzenToneScale.continuousIndexFromFrequency(heardHz)
+        : null;
+    final roundedPointScore = heardHz > 0
+        ? LauritzenToneScale.indexFromFrequency(heardHz)
+        : null;
 
     return SafeArea(
       child: Padding(
@@ -4103,9 +4251,15 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                                   if (_takeConfidences.length > index) {
                                     _takeConfidences.removeAt(index);
                                   }
+                                  if (_takeCandidates.length > index) {
+                                    _takeCandidates.removeAt(index);
+                                  }
                                   if (_selectedIndex == index) {
                                     _selectedIndex = _takes.isEmpty ? null : _takes.length - 1;
-                                    if (_selectedIndex != null) {
+                                    final prevalent = _prevalentCandidates;
+                                    if (prevalent.isNotEmpty) {
+                                      _setManual(prevalent.first.hz);
+                                    } else if (_selectedIndex != null) {
                                       _setManual(_takes[_selectedIndex!]);
                                     }
                                   } else if (_selectedIndex != null && _selectedIndex! > index) {
@@ -4115,6 +4269,53 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                               },
                             ),
                           ],
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              const SizedBox(height: 10),
+              const Text(
+                'Most likely natural frequencies',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              if (_prevalentCandidates.isEmpty)
+                const Text(
+                  'Record at least one take to generate ranked suggestions.',
+                  style: TextStyle(fontSize: 12),
+                )
+              else
+                Column(
+                  children: List.generate(_prevalentCandidates.length, (index) {
+                    final candidate = _prevalentCandidates[index];
+                    final selected = manualValue != null &&
+                        (manualValue - candidate.hz).abs() <= 0.6;
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      color: selected ? kBrandGoldPale : null,
+                      child: ListTile(
+                        dense: true,
+                        title: Text(
+                          'Likely #${index + 1}: ${candidate.hz.toStringAsFixed(1)} Hz',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text(
+                          'Support ${candidate.supportTakes}/${_takes.length} takes | strength ${(candidate.score * 100).toStringAsFixed(0)}%',
+                        ),
+                        leading: IconButton(
+                          icon: const Icon(Icons.play_circle_outline),
+                          tooltip: 'Play candidate',
+                          onPressed: () => _service.playTone(candidate.hz),
+                        ),
+                        trailing: IconButton(
+                          icon: Icon(selected ? Icons.check_circle : Icons.radio_button_unchecked),
+                          tooltip: 'Use this frequency',
+                          onPressed: () {
+                            setState(() {
+                              _setManual(candidate.hz);
+                            });
+                          },
                         ),
                       ),
                     );
@@ -4141,16 +4342,31 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                       divisions: (_maxHz - _minHz).round(),
                       label: '${_sliderHz.toStringAsFixed(0)} Hz',
                       onChangeStart: (value) {
-                        _service.startContinuousTone(value);
-                      },
-                      onChanged: (value) {
                         setState(() {
+                          _isAuditioning = true;
+                          _lastDragHz = value;
                           _sliderHz = value;
                           _manualController.text = value.toStringAsFixed(1);
                         });
-                        _service.setContinuousToneHz(value);
+                        _service.auditionToneHz(value);
                       },
-                      onChangeEnd: (value) {
+                      onChanged: (value) {
+                        setState(() {
+                          _isAuditioning = true;
+                          _lastDragHz = value;
+                          _sliderHz = value;
+                          _manualController.text = value.toStringAsFixed(1);
+                        });
+                        _service.auditionToneHz(value);
+                      },
+                      onChangeEnd: (_) {
+                        // Use _lastDragHz from onChanged — not the pointer-up
+                        // value, which can contain micro-movement jitter.
+                        setState(() {
+                          _isAuditioning = false;
+                          _sliderHz = _lastDragHz;
+                          _manualController.text = _lastDragHz.toStringAsFixed(1);
+                        });
                         _service.stopContinuousTone();
                       },
                     ),
@@ -4162,30 +4378,110 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                   ),
                 ],
               ),
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: _isAuditioning ? kStatusWarningSoft : kSurfaceTint,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _isAuditioning ? kStatusWarningAccent : kSurfaceLine,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          _isAuditioning ? Icons.graphic_eq : Icons.music_note,
+                          size: 18,
+                          color: _isAuditioning ? kBrandBurgundy : kStatusNeutral,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _isAuditioning ? 'Hearing now' : 'Selected tone',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${heardHz.toStringAsFixed(1)} Hz',
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                        ),
+                      ],
+                    ),
+                    if (selectedPitch != null &&
+                        selectedPointScore != null &&
+                        roundedPointScore != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Tone ${selectedPitch.label} (${selectedPitch.cents >= 0 ? '+' : ''}${selectedPitch.cents} cents)',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        'Score ${selectedPointScore.toStringAsFixed(2)} exact (${roundedPointScore.toStringAsFixed(0)} rounded)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 12),
+              const Text(
+                'Fine-tune frequency',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (final step in [-10, -5, -1, 1, 5, 10])
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          minimumSize: const Size(0, 36),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () {
+                          final current = _tryParseNumber(_manualController.text) ?? _sliderHz;
+                          final next = (current + step).clamp(_minHz, _maxHz);
+                          setState(() {
+                            _sliderHz = next;
+                            _lastDragHz = next;
+                            _manualController.text = next.toStringAsFixed(1);
+                          });
+                        },
+                        child: Text(
+                          '${step > 0 ? '+' : ''}$step',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
               _NumberInput(
                 controller: _manualController,
-                label: 'Selected frequency (Hz)',
+                label: 'Frequency (Hz)',
                 requiredField: false,
                 onChanged: (text) {
                   final parsed = _tryParseNumber(text);
                   if (parsed != null) {
                     setState(() {
                       _sliderHz = parsed.clamp(_minHz, _maxHz);
+                      _lastDragHz = _sliderHz;
                     });
                   }
                 },
               ),
-              if (selectedPitch != null && selectedPointScore != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    'Tone ${selectedPitch.label} (${selectedPitch.cents >= 0 ? '+' : ''}${selectedPitch.cents} cents) | Point score ${selectedPointScore.toStringAsFixed(1)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -4266,8 +4562,14 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
       setState(() {
         _takes.add(result.hz);
         _takeConfidences.add(result.correlation);
+        _takeCandidates.add(result.candidates);
         _selectedIndex = _takes.length - 1;
-        _setManual(result.hz);
+        final prevalent = _prevalentCandidates;
+        if (prevalent.isNotEmpty) {
+          _setManual(prevalent.first.hz);
+        } else {
+          _setManual(result.hz);
+        }
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -4288,6 +4590,39 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
       }
     }
   }
+}
+
+class _PrevalenceAccumulator {
+  double weightedHz = 0;
+  double totalWeight = 0;
+  final Set<int> supportingTakes = <int>{};
+
+  void add(double hz, double weight, int takeIndex) {
+    weightedHz += hz * weight;
+    totalWeight += weight;
+    supportingTakes.add(takeIndex);
+  }
+
+  double get centerHz {
+    if (totalWeight <= 1e-9) {
+      return 0;
+    }
+    return weightedHz / totalWeight;
+  }
+
+  int get supportTakeCount => supportingTakes.length;
+}
+
+class _PrevalentFrequency {
+  const _PrevalentFrequency({
+    required this.hz,
+    required this.score,
+    required this.supportTakes,
+  });
+
+  final double hz;
+  final double score;
+  final int supportTakes;
 }
 
 class _LiveCapturePanel extends StatelessWidget {

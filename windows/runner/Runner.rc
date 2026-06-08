@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "reedlab" "\0"
+            VALUE "FileDescription", "ReedLab for Bassoon" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "reedlab" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
             VALUE "OriginalFilename", "reedlab.exe" "\0"
-            VALUE "ProductName", "reedlab" "\0"
+            VALUE "ProductName", "ReedLab for Bassoon" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
