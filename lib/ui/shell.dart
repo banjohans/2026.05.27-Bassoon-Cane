@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/cane.dart';
 import '../models/reed.dart';
 import '../services/prediction_engine.dart';
+import '../services/are_estimate.dart';
 import '../services/resonance_capture_service.dart';
 import '../state/app_controller.dart';
 import '../state/theme_controller.dart';
@@ -4022,22 +4023,9 @@ class _AddCanePageState extends State<AddCanePage> {
                   const SizedBox(height: 18),
                   _SectionCard(
                     title: 'Live Prediction',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _PredictionStatus(
-                          missing: _missingForPrediction(),
-                          result: livePrediction,
-                        ),
-                        if (draftMetricSample != null) ...[
-                          const SizedBox(height: 10),
-                          _MetricPreview(sample: draftMetricSample),
-                        ],
-                        if (livePrediction != null) ...[
-                          const SizedBox(height: 10),
-                          _PredictionSummary(result: livePrediction),
-                        ],
-                      ],
+                    child: _LivePredictionView(
+                      sample: draftMetricSample,
+                      prediction: livePrediction,
                     ),
                   ),
                 ],
@@ -4539,17 +4527,6 @@ class _AddCanePageState extends State<AddCanePage> {
       }
     }
     return presets;
-  }
-
-  List<String> _missingForPrediction() {
-    final missing = <String>[];
-    if (_tryParseNumber(_lengthController.text) == null) missing.add('length');
-    if (_tryParseNumber(_widthController.text) == null) missing.add('width');
-    if (_tryParseNumber(_thicknessController.text) == null) missing.add('thickness');
-    if (_tryParseNumber(_loadController.text) == null) missing.add('load');
-    final freq = _tryParseNumber(_frequencyController.text);
-    if (freq == null && _resonanceTakesHz.isEmpty) missing.add('frequency');
-    return missing;
   }
 
   List<double> get _hardnessReadings {
@@ -6054,107 +6031,578 @@ class _TakeBarsPainter extends CustomPainter {
   }
 }
 
-class _PredictionSummary extends StatelessWidget {
-  const _PredictionSummary({required this.result});
+/// Cohesive, gamified "Live Prediction" panel. Leads with a single ARE hero
+/// (measured when flexibility is in, otherwise the simulated estimate),
+/// follows with a tidy checklist of the signals that strengthen the estimate,
+/// and tucks every explanatory paragraph and match statistic behind dropdowns.
+class _LivePredictionView extends StatelessWidget {
+  const _LivePredictionView({required this.sample, required this.prediction});
 
-  final PredictionResult result;
+  final CaneSample? sample;
+  final PredictionResult? prediction;
 
   @override
   Widget build(BuildContext context) {
-    final ari = result.targetCane.ari;
-    final ariStatus = _ariStatus(ari);
-    final buoyancy = result.targetCane.buoyancyPercent;
-    final buoyancyStatus = _buoyancyStatus(buoyancy);
+    final localSample = sample;
+    final estimate = localSample == null
+        ? AreEstimate.unavailable
+        : const AreEstimator().estimate(localSample);
+    final realAre = localSample?.ari;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'ACCEPTABLE REED ESTIMATE (ARE)',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: ariStatus.color,
-            letterSpacing: 0.4,
-          ),
-        ),
+        _AreHero(realAre: realAre, estimate: estimate),
+        const SizedBox(height: 14),
+        _AreSignalChecklist(estimate: estimate, hasRealAre: realAre != null),
+        if (prediction != null) ...[
+          const SizedBox(height: 14),
+          _MatchSummary(result: prediction!),
+        ],
         const SizedBox(height: 4),
-        Text(
-          ari == null ? 'n/a' : ari.toStringAsFixed(1),
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 30, color: ariStatus.color),
-        ),
-        Text(ariStatus.label, style: TextStyle(fontWeight: FontWeight.w700, color: ariStatus.color)),
-        const SizedBox(height: 8),
-        Text(
-          'Buoyancy: ${buoyancy?.toStringAsFixed(1) ?? 'n/a'}% - ${buoyancyStatus.label}',
-          style: TextStyle(fontWeight: FontWeight.w700, color: buoyancyStatus.color),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          'Similarity: ${result.similarityPercent.toStringAsFixed(1)}%',
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Compared with ${result.successfulReferenceCount} successful reeds (avg grade ${ReedEvaluation.gradeForScore(result.averageReferenceScore)} | ${result.averageReferenceScore.toStringAsFixed(1)}/10).',
-        ),
-        const SizedBox(height: 6),
-        Text('Eigenfrequency score: ${result.referenceAverages['lauritzenToneIndex']?.toStringAsFixed(1) ?? 'n/a'}'),
-        Text('Reference ARE: ${result.referenceAverages['ari']?.toStringAsFixed(1) ?? 'n/a'}'),
-        Text('Reference buoyancy: ${result.referenceAverages['buoyancyPercent']?.toStringAsFixed(1) ?? 'n/a'}%'),
-        if (ari != null && buoyancy != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(_combinedPredictionMessage(ari, buoyancy)),
-          ),
-        const SizedBox(height: 6),
-        if (result.featureDeviations.isNotEmpty)
-          ...result.featureDeviations.map((row) => Text('- $row')),
+        _HowEstimateWorks(estimate: estimate),
       ],
     );
   }
 }
 
-class _MetricPreview extends StatelessWidget {
-  const _MetricPreview({required this.sample});
+/// Small rounded status pill used in the ARE hero and checklist.
+class _PillBadge extends StatelessWidget {
+  const _PillBadge({required this.label, required this.color, this.icon});
 
-  final CaneSample sample;
+  final String label;
+  final Color color;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
-    final ari = sample.ari;
-    final ariStatus = _ariStatus(ari);
-    final buoyancy = sample.buoyancyPercent;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The single hero number: measured ARE, simulated ARE, or a locked prompt.
+class _AreHero extends StatelessWidget {
+  const _AreHero({required this.realAre, required this.estimate});
+
+  final double? realAre;
+  final AreEstimate estimate;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (realAre == null && !estimate.isAvailable) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: kStatusNeutral.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: kStatusNeutral.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.lock_outline, color: kStatusNeutral, size: 26),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'ARE locked',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                      color: kStatusNeutral,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Finish the two essentials below to unlock your estimate.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final isReal = realAre != null;
+    final value = isReal ? realAre! : estimate.estimatedAre!;
+    final status = _ariStatus(value);
+    final badgeColor =
+        isReal ? status.color : _areEstimateConfidenceColor(estimate.confidence);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: status.color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: status.color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          Text(
+            isReal ? value.toStringAsFixed(1) : '~${value.toStringAsFixed(1)}',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 34,
+              height: 1.0,
+              color: status.color,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isReal ? 'ACCEPTABLE REED ESTIMATE' : 'SIMULATED ARE',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
+                    fontSize: 11,
+                    color: status.color,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  status.label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: status.color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _PillBadge(
+            label: isReal ? 'Measured' : estimate.confidence.label,
+            color: badgeColor,
+            icon: isReal ? Icons.verified : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Gamified checklist: a strength meter plus one tidy row per input signal, so
+/// the user sees at a glance which tasks sharpen the estimate.
+class _AreSignalChecklist extends StatelessWidget {
+  const _AreSignalChecklist({required this.estimate, required this.hasRealAre});
+
+  final AreEstimate estimate;
+  final bool hasRealAre;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final present = estimate.signalsPresentCount;
+    const total = 5;
+
+    final Color meterColor;
+    if (!estimate.essentialsComplete) {
+      meterColor = kBrandGold;
+    } else {
+      meterColor = _areEstimateConfidenceColor(estimate.confidence);
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  hasRealAre ? 'DATA CAPTURED' : 'ESTIMATE STRENGTH',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
+                    fontSize: 11,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+              Text(
+                '$present / $total',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                  color: meterColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (var i = 0; i < total; i++) ...[
+                if (i > 0) const SizedBox(width: 4),
+                Expanded(
+                  child: Container(
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: i < present
+                          ? meterColor
+                          : theme.colorScheme.outline.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 4),
+          for (final signal in estimate.estimateSignals)
+            _AreSignalRow(signal: signal),
+          if (estimate.trueAreSignals.isNotEmpty) ...[
+            Divider(
+              height: 18,
+              color: theme.colorScheme.outline.withValues(alpha: 0.5),
+            ),
+            Text(
+              'UNLOCK TRUE ARE',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4,
+                fontSize: 11,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'A Flexter flexibility reading replaces the estimate with the exact, '
+              'measured ARE.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                height: 1.3,
+              ),
+            ),
+            for (final signal in estimate.trueAreSignals)
+              _AreSignalRow(signal: signal),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One checklist row: a check/target icon, the signal name, and a status tag.
+class _AreSignalRow extends StatelessWidget {
+  const _AreSignalRow({required this.signal});
+
+  final AreSignalStatus signal;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final present = signal.present;
+    final role = signal.kind.role;
+
+    final IconData icon;
+    final Color iconColor;
+    if (present) {
+      icon = Icons.check_circle;
+      iconColor = kStatusSuccess;
+    } else {
+      switch (role) {
+        case AreSignalRole.essential:
+          icon = Icons.radio_button_unchecked;
+          iconColor = kBrandGold;
+        case AreSignalRole.trueAre:
+          icon = Icons.science_outlined;
+          iconColor = theme.colorScheme.primary;
+        case AreSignalRole.booster:
+          icon = Icons.add_circle_outline;
+          iconColor = kStatusNeutral.withValues(alpha: 0.7);
+      }
+    }
+
+    final Widget tag;
+    if (present) {
+      tag = _PillBadge(
+        label: role == AreSignalRole.trueAre ? 'Measured' : 'Added',
+        color: kStatusSuccess,
+        icon: role == AreSignalRole.trueAre ? Icons.verified : null,
+      );
+    } else {
+      switch (role) {
+        case AreSignalRole.essential:
+          tag = const _PillBadge(label: 'Required', color: kBrandGold);
+        case AreSignalRole.trueAre:
+          tag = _PillBadge(label: 'True ARE', color: theme.colorScheme.primary);
+        case AreSignalRole.booster:
+          tag = _PillBadge(
+            label: '+accuracy',
+            color: kStatusNeutral.withValues(alpha: 0.8),
+          );
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, size: 20, color: iconColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  signal.kind.label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: present
+                        ? theme.colorScheme.onSurface
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                  ),
+                ),
+                if (!present)
+                  Text(
+                    signal.kind.hint,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          tag,
+        ],
+      ),
+    );
+  }
+}
+
+/// Slim reed-match card shown once the full prediction is available. Keeps the
+/// similarity headline visible and tucks reference stats into a dropdown.
+class _MatchSummary extends StatelessWidget {
+  const _MatchSummary({required this.result});
+
+  final PredictionResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final ari = result.targetCane.ari;
+    final buoyancy = result.targetCane.buoyancyPercent;
     final buoyancyStatus = _buoyancyStatus(buoyancy);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Live ARE Preview',
-          style: TextStyle(fontWeight: FontWeight.w700, color: ariStatus.color),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          ari == null ? 'ARE: add flexibility and frequency' : 'ARE: ${ari.toStringAsFixed(0)} (${ariStatus.label})',
-          style: TextStyle(fontWeight: FontWeight.w700, color: ariStatus.color),
-        ),
-        if (sample.naturalFrequencyHz > 0)
-          Text(
-            'Eigenfrequency score: ${sample.eigenfrequencyScore.toStringAsFixed(0)}',
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Text(
+                  'REED MATCH',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
+                    fontSize: 11,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+              Text(
+                '${result.similarityPercent.toStringAsFixed(1)}%',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 22),
+              ),
+            ],
           ),
-        const SizedBox(height: 6),
-        Text(
-          buoyancy == null
-              ? 'Buoyancy: enter submerged length for density interpretation'
-              : 'Buoyancy: ${buoyancy.toStringAsFixed(1)}% (${buoyancyStatus.label})',
-          style: TextStyle(fontWeight: FontWeight.w700, color: buoyancyStatus.color),
-        ),
-        if (ari != null && buoyancy != null) ...[
-          const SizedBox(height: 4),
-          Text(_combinedPredictionMessage(ari, buoyancy)),
+          const SizedBox(height: 2),
+          Text(
+            'Buoyancy: ${buoyancy?.toStringAsFixed(1) ?? 'n/a'}% - ${buoyancyStatus.label}',
+            style: TextStyle(fontWeight: FontWeight.w600, color: buoyancyStatus.color),
+          ),
+          Theme(
+            data: theme.copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 8),
+              expandedCrossAxisAlignment: CrossAxisAlignment.start,
+              title: Text(
+                'Match details',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              children: [
+                Text(
+                  'Compared with ${result.successfulReferenceCount} successful reeds (avg grade ${ReedEvaluation.gradeForScore(result.averageReferenceScore)} | ${result.averageReferenceScore.toStringAsFixed(1)}/10).',
+                ),
+                const SizedBox(height: 6),
+                Text('Eigenfrequency score: ${result.referenceAverages['lauritzenToneIndex']?.toStringAsFixed(1) ?? 'n/a'}'),
+                Text('Reference ARE: ${result.referenceAverages['ari']?.toStringAsFixed(1) ?? 'n/a'}'),
+                Text('Reference buoyancy: ${result.referenceAverages['buoyancyPercent']?.toStringAsFixed(1) ?? 'n/a'}%'),
+                if (ari != null && buoyancy != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(_combinedPredictionMessage(ari, buoyancy)),
+                  ),
+                if (result.featureDeviations.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  ...result.featureDeviations.map((row) => Text('- $row')),
+                ],
+              ],
+            ),
+          ),
         ],
-      ],
+      ),
     );
+  }
+}
+
+/// Explanatory dropdown for the simulated ARE: what it is, how it is derived,
+/// the formula, and which signals fed it. Collapsed by default to stay tidy.
+class _HowEstimateWorks extends StatelessWidget {
+  const _HowEstimateWorks({required this.estimate});
+
+  final AreEstimate estimate;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Theme(
+      data: theme.copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 8),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        title: Text(
+          'How the simulated ARE works',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        children: [
+          Text(
+            estimate.whatText,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.80),
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            estimate.howText,
+            style: theme.textTheme.bodySmall?.copyWith(height: 1.35),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: theme.colorScheme.outline),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'stiffness  =  weight x tap-pitch^2 x size',
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12.5,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'est. ARE  =  est. flexibility  -  tone index',
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12.5,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            estimate.reliabilityText,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+              height: 1.3,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Color _areEstimateConfidenceColor(AreEstimateConfidence confidence) {
+  switch (confidence) {
+    case AreEstimateConfidence.high:
+      return kStatusSuccess;
+    case AreEstimateConfidence.medium:
+      return kStatusWarning;
+    case AreEstimateConfidence.low:
+    case AreEstimateConfidence.none:
+      return kStatusNeutral;
   }
 }
 
@@ -7088,50 +7536,6 @@ class _WizardStep {
   final bool Function()? canAdvance;
 }
 
-class _PredictionStatus extends StatelessWidget {
-  const _PredictionStatus({required this.missing, required this.result});
-
-  final List<String> missing;
-  final PredictionResult? result;
-
-  @override
-  Widget build(BuildContext context) {
-    if (missing.isEmpty && result != null) {
-      return Row(
-        children: const [
-          Icon(Icons.check_circle, color: kStatusSuccess, size: 18),
-          SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              'Prediction ready — see details below.',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      );
-    }
-    if (missing.isNotEmpty) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.hourglass_bottom, color: kBrandGold, size: 18),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              'Waiting on ${missing.length} input${missing.length == 1 ? '' : 's'}: ${missing.join(', ')}.',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      );
-    }
-    return const Text(
-      'Live prediction will appear as you enter data.',
-      style: TextStyle(fontWeight: FontWeight.w600),
-    );
-  }
-}
-
 class _ReviewRow {
   const _ReviewRow(this.label, this.value);
   final String label;
@@ -7321,6 +7725,27 @@ class _SettingsTab extends StatelessWidget {
                   'Flexibility is measured in degrees of deflection under a known load. '
                   'Tone index is a Lauritzen scale (0–36) where the tapped pitch G♯ is 0 '
                   '(highest, densest cane) and B is 36 (lowest, softest cane).',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.78),
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'No Flexter? Simulated ARE',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'No flexibility machine? ReedLab can still estimate ARE. It reads how '
+                  'stiff the cane must be from its weight, size and tap-tone - heavier, '
+                  'higher-pitched cane for its size is stiffer and twists less - predicts '
+                  'the flexibility, then grades it on the same scale. It is shown with a '
+                  '"~" and a confidence badge. Treat it as a screening hint, and add a '
+                  'float test or hardness reading to tighten it.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.78),
                     height: 1.4,
