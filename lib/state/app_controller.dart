@@ -118,10 +118,16 @@ class AppController extends ChangeNotifier {
 
   List<double> get hardnessHistory {
     return _sortedDistinct(
-      _caneSamples
-          .map((sample) => sample.hardness)
-          .whereType<double>()
-          .where((value) => value > 0),
+      _caneSamples.expand((sample) {
+        if (sample.hardnessReadings.isNotEmpty) {
+          return sample.hardnessReadings;
+        }
+        final value = sample.hardness;
+        if (value != null && value > 0) {
+          return [value];
+        }
+        return const <double>[];
+      }),
     );
   }
 
@@ -247,6 +253,7 @@ class AppController extends ChangeNotifier {
     double? submergedLengthMm,
     double? density,
     double? hardness,
+    List<double> hardnessReadings = const [],
     String notes = '',
     List<String> photoPaths = const [],
     List<double> resonanceTakesHz = const [],
@@ -269,6 +276,7 @@ class AppController extends ChangeNotifier {
       submergedLengthMm: submergedLengthMm,
       density: density,
       hardness: hardness,
+      hardnessReadings: hardnessReadings,
       notes: notes,
       photoPaths: photoPaths,
       resonanceTakesHz: resonanceTakesHz,
@@ -296,6 +304,7 @@ class AppController extends ChangeNotifier {
     double? submergedLengthMm,
     double? density,
     double? hardness,
+    List<double> hardnessReadings = const [],
     String notes = '',
     List<String> photoPaths = const [],
     List<double> resonanceTakesHz = const [],
@@ -320,6 +329,7 @@ class AppController extends ChangeNotifier {
         submergedLengthMm: submergedLengthMm,
         density: density,
         hardness: hardness,
+        hardnessReadings: hardnessReadings,
         notes: notes,
         photoPaths: photoPaths,
         resonanceTakesHz: resonanceTakesHz,

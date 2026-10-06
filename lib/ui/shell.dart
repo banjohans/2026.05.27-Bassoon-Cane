@@ -3052,6 +3052,24 @@ String _combinedPredictionMessage(double ari, double buoyancyPercent) {
   return 'Both ARE and density are outside preferred range for this profile.';
 }
 
+String? _hardnessChipLabelForSample(CaneSample sample) {
+  final readings = sample.hardnessReadings.where((value) => value > 0).toList();
+  if (readings.isNotEmpty) {
+    final points = readings.map((value) => value.toStringAsFixed(1)).join('/');
+    final average = sample.hardness ?? (readings.reduce((a, b) => a + b) / readings.length);
+    if (readings.length == 1) {
+      return 'H $points';
+    }
+    return 'H $points avg ${average.toStringAsFixed(1)}';
+  }
+
+  final hardness = sample.hardness;
+  if (hardness != null && hardness > 0) {
+    return 'H ${hardness.toStringAsFixed(1)}';
+  }
+  return null;
+}
+
 class _CaneTab extends StatefulWidget {
   const _CaneTab({required this.controller});
 
@@ -3121,6 +3139,15 @@ class _CaneTabState extends State<_CaneTab> {
             const Text(
               'Cane Measurement Log',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
+            ),
+            const SizedBox(height: 8),
+            const _SectionCard(
+              title: 'Analysis Scope',
+              child: Text(
+                'This analysis tool is designed for gouged cane that is not yet profiled or shaped. '
+                'At this stage, pieces are most physically comparable: similar length, width, and thickness, with bark still intact. '
+                'That consistency makes elasticity, reference-frequency, and buoyancy testing more reliable while avoiding extra noise from later shaping.',
+              ),
             ),
             const SizedBox(height: 8),
             Wrap(
@@ -3818,7 +3845,9 @@ class _AddCanePageState extends State<AddCanePage> {
   final _loadController = TextEditingController(text: '200');
   final _frequencyController = TextEditingController();
   final _submergedLengthController = TextEditingController();
-  final _hardnessController = TextEditingController();
+  final _hardnessControllerA = TextEditingController();
+  final _hardnessControllerB = TextEditingController();
+  final _hardnessControllerC = TextEditingController();
   final _notesController = TextEditingController();
 
   final ImagePicker _imagePicker = ImagePicker();
@@ -3857,7 +3886,19 @@ class _AddCanePageState extends State<AddCanePage> {
       _loadController.text = sample.loadG.toStringAsFixed(1);
       _frequencyController.text = sample.naturalFrequencyHz.toStringAsFixed(1);
       _submergedLengthController.text = sample.submergedLengthMm?.toStringAsFixed(3) ?? '';
-      _hardnessController.text = sample.hardness?.toStringAsFixed(3) ?? '';
+      final hardnessReadings = sample.hardnessReadings;
+      if (hardnessReadings.isNotEmpty) {
+        _hardnessControllerA.text = hardnessReadings[0].toStringAsFixed(3);
+      }
+      if (hardnessReadings.length > 1) {
+        _hardnessControllerB.text = hardnessReadings[1].toStringAsFixed(3);
+      }
+      if (hardnessReadings.length > 2) {
+        _hardnessControllerC.text = hardnessReadings[2].toStringAsFixed(3);
+      }
+      if (hardnessReadings.isEmpty && sample.hardness != null) {
+        _hardnessControllerA.text = sample.hardness!.toStringAsFixed(3);
+      }
       _notesController.text = sample.notes;
       _photoPaths = [...sample.photoPaths];
       _resonanceTakesHz = [...sample.resonanceTakesHz];
@@ -3878,7 +3919,9 @@ class _AddCanePageState extends State<AddCanePage> {
     _loadController.dispose();
     _frequencyController.dispose();
     _submergedLengthController.dispose();
-    _hardnessController.dispose();
+    _hardnessControllerA.dispose();
+    _hardnessControllerB.dispose();
+    _hardnessControllerC.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -4180,19 +4223,39 @@ class _AddCanePageState extends State<AddCanePage> {
       _WizardStep(
         title: 'Gouge style',
         helper: 'How is the inside of the cane shaped?',
-        builder: () => DropdownButtonFormField<String>(
-          initialValue: _innerGougeType,
-          decoration: const InputDecoration(labelText: 'Gouge'),
-          items: const [
-            DropdownMenuItem(value: 'excentric', child: Text('Excentric')),
-            DropdownMenuItem(value: 'concentric', child: Text('Concentric')),
-            DropdownMenuItem(value: 'none', child: Text('None / unknown')),
+        builder: () => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Cane type help',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                IconButton(
+                  onPressed: _showCaneTypeHelp,
+                  icon: const Icon(Icons.help_outline),
+                  tooltip: 'What cane type should I analyze?',
+                ),
+              ],
+            ),
+            DropdownButtonFormField<String>(
+              initialValue: _innerGougeType,
+              decoration: const InputDecoration(labelText: 'Gouge'),
+              items: const [
+                DropdownMenuItem(value: 'excentric', child: Text('Excentric')),
+                DropdownMenuItem(value: 'concentric', child: Text('Concentric')),
+                DropdownMenuItem(value: 'none', child: Text('None / unknown')),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _innerGougeType = value ?? 'none';
+                });
+              },
+            ),
           ],
-          onChanged: (value) {
-            setState(() {
-              _innerGougeType = value ?? 'none';
-            });
-          },
         ),
         optional: true,
       ),
@@ -4310,6 +4373,57 @@ class _AddCanePageState extends State<AddCanePage> {
         ),
       ),
       _WizardStep(
+        title: 'Hardness',
+        helper: 'Measure on dry cane. Log 2-3 points and the app stores the average.',
+        optional: true,
+        builder: () => Column(
+          children: [
+            _NumberInput(
+              controller: _hardnessControllerA,
+              label: 'Hardness point 1',
+              requiredField: false,
+              onChanged: (_) => setState(() {}),
+            ),
+            _NumberInput(
+              controller: _hardnessControllerB,
+              label: 'Hardness point 2',
+              requiredField: false,
+              onChanged: (_) => setState(() {}),
+            ),
+            _NumberInput(
+              controller: _hardnessControllerC,
+              label: 'Hardness point 3 (optional)',
+              requiredField: false,
+              onChanged: (_) => setState(() {}),
+            ),
+            _ValuePresetChips(
+              values: controller.hardnessHistory,
+              onSelected: (value) {
+                if (_hardnessControllerA.text.trim().isEmpty) {
+                  _hardnessControllerA.text = value.toStringAsFixed(3);
+                } else if (_hardnessControllerB.text.trim().isEmpty) {
+                  _hardnessControllerB.text = value.toStringAsFixed(3);
+                } else {
+                  _hardnessControllerC.text = value.toStringAsFixed(3);
+                }
+                setState(() {});
+              },
+            ),
+            if (_hardnessAverage != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Average hardness: ${_hardnessAverage!.toStringAsFixed(3)}',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      _WizardStep(
         title: 'Submerged length (mm)',
         helper: 'Buoyancy test — skip if not performed.',
         optional: true,
@@ -4332,35 +4446,23 @@ class _AddCanePageState extends State<AddCanePage> {
         ),
       ),
       _WizardStep(
-        title: 'Hardness',
-        helper: 'Optional indentation/scratch resistance value.',
-        optional: true,
-        builder: () => Column(
-          children: [
-            _NumberInput(
-              controller: _hardnessController,
-              label: 'Hardness',
-              requiredField: false,
-              onChanged: (_) => setState(() {}),
-            ),
-            _ValuePresetChips(
-              values: controller.hardnessHistory,
-              onSelected: (value) {
-                _hardnessController.text = value.toStringAsFixed(3);
-                setState(() {});
-              },
-            ),
-          ],
-        ),
-      ),
-      _WizardStep(
         title: 'Notes & photos',
-        helper: 'Anything else worth remembering about this cane.',
+        helper: 'Describe color, bark pattern, and structure. Add translucency photos against a lamp.',
         optional: true,
         builder: () => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _TextInput(controller: _notesController, label: 'Notes', maxLines: 3, requiredField: false),
+            const Text(
+              'Suggested notes: yellowish/greenish wood color, even bark vs darker map-like markings, and visible fiber structure.',
+              style: TextStyle(height: 1.35),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Photo tip: hold the cane against a lamp so light passes through the wood. Try one photo from the inside and one from the outside.',
+              style: TextStyle(height: 1.35),
+            ),
+            const SizedBox(height: 12),
+            _TextInput(controller: _notesController, label: 'Notes', maxLines: 4, requiredField: false),
             const SizedBox(height: 12),
             _SectionCard(
               title: 'Cane Photos',
@@ -4407,8 +4509,9 @@ class _AddCanePageState extends State<AddCanePage> {
             _ReviewRow('Frequency', _displayValue(_frequencyController.text, 'Hz')),
             _ReviewRow('Mass', _displayValue(_massController.text, 'g')),
             _ReviewRow('Flexibility', _displayValue(_flexibilityController.text, 'deg')),
+            _ReviewRow('Hardness points', _hardnessReadingsLabel),
+            _ReviewRow('Hardness average', _displayValue(_hardnessAverage?.toStringAsFixed(3) ?? '', '')),
             _ReviewRow('Submerged length', _displayValue(_submergedLengthController.text, 'mm')),
-            _ReviewRow('Hardness', _displayValue(_hardnessController.text, '')),
             _ReviewRow('Photos', _photoPaths.isEmpty ? '—' : '${_photoPaths.length} attached'),
             _ReviewRow('Notes', _notesController.text.trim().isEmpty ? '—' : _notesController.text.trim()),
           ],
@@ -4447,6 +4550,30 @@ class _AddCanePageState extends State<AddCanePage> {
     final freq = _tryParseNumber(_frequencyController.text);
     if (freq == null && _resonanceTakesHz.isEmpty) missing.add('frequency');
     return missing;
+  }
+
+  List<double> get _hardnessReadings {
+    return [
+      _tryParseNumber(_hardnessControllerA.text),
+      _tryParseNumber(_hardnessControllerB.text),
+      _tryParseNumber(_hardnessControllerC.text),
+    ].whereType<double>().where((value) => value > 0).toList();
+  }
+
+  double? get _hardnessAverage {
+    final readings = _hardnessReadings;
+    if (readings.isEmpty) {
+      return null;
+    }
+    return readings.reduce((a, b) => a + b) / readings.length;
+  }
+
+  String get _hardnessReadingsLabel {
+    final readings = _hardnessReadings;
+    if (readings.isEmpty) {
+      return '—';
+    }
+    return readings.map((value) => value.toStringAsFixed(3)).join(', ');
   }
 
   PredictionResult? _draftPrediction(AppController controller) {
@@ -4521,7 +4648,8 @@ class _AddCanePageState extends State<AddCanePage> {
       loadG: load,
       naturalFrequencyHz: frequency ?? 0,
       submergedLengthMm: submergedLength,
-      hardness: _tryParseNumber(_hardnessController.text),
+      hardness: _hardnessAverage,
+      hardnessReadings: _hardnessReadings,
       notes: _notesController.text.trim(),
       photoPaths: _photoPaths,
       resonanceTakesHz: _resonanceTakesHz,
@@ -4545,6 +4673,33 @@ class _AddCanePageState extends State<AddCanePage> {
       _purchaseDate = DateTime(selected.year, 1, 1);
       _batchController.text = selected.year.toString().padLeft(4, '0');
     });
+  }
+
+  Future<void> _showCaneTypeHelp() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Which cane type should be analyzed?'),
+          content: const SingleChildScrollView(
+            child: Text(
+              'Use this analysis workflow for gouged cane that is not yet profiled or shaped. '
+              'At this stage, pieces are most comparable in physical appearance and dimensions, '
+              'which improves consistency in analysis.\n\n'
+              'The inner gouging has removed unnecessary dead weight, and pieces are cut to similar '
+              'length, width, and thickness while the bark is still intact. This is important for '
+              'elasticity testing, reference frequency testing, and buoyancy testing.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _openFrequencyRecorder() async {
@@ -4656,7 +4811,8 @@ class _AddCanePageState extends State<AddCanePage> {
         loadG: loadG,
         naturalFrequencyHz: naturalFrequencyHz,
         submergedLengthMm: submergedLengthMm,
-        hardness: _tryParseNumber(_hardnessController.text),
+        hardness: _hardnessAverage,
+        hardnessReadings: _hardnessReadings,
         notes: _notesController.text.trim(),
         photoPaths: _photoPaths,
         resonanceTakesHz: _resonanceTakesHz,
@@ -4676,7 +4832,8 @@ class _AddCanePageState extends State<AddCanePage> {
         loadG: loadG,
         naturalFrequencyHz: naturalFrequencyHz,
         submergedLengthMm: submergedLengthMm,
-        hardness: _tryParseNumber(_hardnessController.text),
+        hardness: _hardnessAverage,
+        hardnessReadings: _hardnessReadings,
         notes: _notesController.text.trim(),
         photoPaths: _photoPaths,
         resonanceTakesHz: _resonanceTakesHz,
@@ -4965,7 +5122,7 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
   final List<List<ResonanceCandidate>> _takeCandidates = [];
   int? _selectedIndex;
   bool _isRecording = false;
-  bool _isAuditioning = false;
+  bool _soundOn = false; // continuous audition tone toggled on
   double _lastDragHz = 1200;
   StreamSubscription<LiveCaptureFrame>? _liveSub;
   LiveCaptureFrame? _liveFrame;
@@ -5000,6 +5157,27 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
     _sliderHz = clamped;
     _lastDragHz = clamped;
     _manualController.text = clamped.toStringAsFixed(1);
+    if (_soundOn) {
+      _service.updateContinuousTone(clamped);
+    }
+  }
+
+  void _toggleSound() {
+    setState(() => _soundOn = !_soundOn);
+    if (_soundOn) {
+      _service.startContinuousTone(_sliderHz);
+    } else {
+      _service.stopContinuousTone();
+    }
+  }
+
+  /// Plays a momentary comparison tone. A preview takes over the shared audio
+  /// player, so switch the continuous tone off first and keep the UI in sync.
+  void _previewTone(double hz) {
+    if (_soundOn) {
+      setState(() => _soundOn = false);
+    }
+    _service.playTone(hz);
   }
 
   double get _mean {
@@ -5109,7 +5287,7 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final manualValue = _tryParseNumber(_manualController.text);
-    final heardHz = _isAuditioning
+    final heardHz = _soundOn
         ? _sliderHz
         : (manualValue != null && manualValue > 0 ? manualValue : _sliderHz);
     final selectedPitch = heardHz > 0 ? _pitchFromFrequency(heardHz) : null;
@@ -5217,7 +5395,7 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                         leading: IconButton(
                           icon: const Icon(Icons.play_circle_outline),
                           tooltip: 'Play this take',
-                          onPressed: () => _service.playTone(take),
+                          onPressed: () => _previewTone(take),
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -5298,7 +5476,7 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                         leading: IconButton(
                           icon: const Icon(Icons.play_circle_outline),
                           tooltip: 'Play candidate',
-                          onPressed: () => _service.playTone(candidate.hz),
+                          onPressed: () => _previewTone(candidate.hz),
                         ),
                         trailing: IconButton(
                           icon: Icon(selected ? Icons.check_circle : Icons.radio_button_unchecked),
@@ -5320,7 +5498,8 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Drag the fader to match what you hear from the cane. Tap play to compare against a pure tone.',
+                'Tap the speaker to turn the tone on, then drag the fader to glide '
+                'the pitch in real time until it matches what you hear from the cane.',
                 style: TextStyle(fontSize: 12),
               ),
               const SizedBox(height: 4),
@@ -5335,38 +5514,46 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                       label: '${_sliderHz.toStringAsFixed(0)} Hz',
                       onChangeStart: (value) {
                         setState(() {
-                          _isAuditioning = true;
                           _lastDragHz = value;
                           _sliderHz = value;
                           _manualController.text = value.toStringAsFixed(1);
                         });
-                        _service.auditionToneHz(value);
+                        if (_soundOn) {
+                          _service.updateContinuousTone(value);
+                        }
                       },
                       onChanged: (value) {
                         setState(() {
-                          _isAuditioning = true;
                           _lastDragHz = value;
                           _sliderHz = value;
                           _manualController.text = value.toStringAsFixed(1);
                         });
-                        _service.auditionToneHz(value);
+                        // Retune the running tone live; do NOT stop it, so the
+                        // sound glides with the fader instead of cutting out.
+                        if (_soundOn) {
+                          _service.updateContinuousTone(value);
+                        }
                       },
-                      onChangeEnd: (_) {
+                      onChangeEnd: (value) {
                         // Use _lastDragHz from onChanged — not the pointer-up
-                        // value, which can contain micro-movement jitter.
+                        // value, which can contain micro-movement jitter. The
+                        // tone keeps playing (if toggled on) at the held pitch.
                         setState(() {
-                          _isAuditioning = false;
                           _sliderHz = _lastDragHz;
                           _manualController.text = _lastDragHz.toStringAsFixed(1);
                         });
-                        _service.stopContinuousTone();
+                        if (_soundOn) {
+                          _service.updateContinuousTone(_lastDragHz);
+                        }
                       },
                     ),
                   ),
                   IconButton.filledTonal(
+                    isSelected: _soundOn,
                     icon: const Icon(Icons.volume_up),
-                    tooltip: 'Play chosen frequency',
-                    onPressed: manualValue == null ? null : () => _service.playTone(manualValue),
+                    selectedIcon: const Icon(Icons.volume_off),
+                    tooltip: _soundOn ? 'Turn tone off' : 'Turn tone on',
+                    onPressed: _toggleSound,
                   ),
                 ],
               ),
@@ -5375,12 +5562,12 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                 margin: const EdgeInsets.only(top: 8),
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: _isAuditioning
+                  color: _soundOn
                       ? kStatusWarningSoft
                       : scheme.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: _isAuditioning ? kStatusWarningAccent : scheme.outline,
+                    color: _soundOn ? kStatusWarningAccent : scheme.outline,
                   ),
                 ),
                 child: Column(
@@ -5388,7 +5575,7 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                   children: [
                     Builder(
                       builder: (context) {
-                        final panelBg = _isAuditioning
+                        final panelBg = _soundOn
                             ? kStatusWarningSoft
                             : scheme.surfaceContainerHigh;
                         final panelText = panelBg.computeLuminance() > 0.56
@@ -5403,13 +5590,13 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                     Row(
                       children: [
                         Icon(
-                          _isAuditioning ? Icons.graphic_eq : Icons.music_note,
+                          _soundOn ? Icons.graphic_eq : Icons.music_note,
                           size: 18,
-                          color: _isAuditioning ? kBrandBurgundy : kStatusNeutral,
+                          color: _soundOn ? kBrandBurgundy : kStatusNeutral,
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          _isAuditioning ? 'Hearing now' : 'Selected tone',
+                          _soundOn ? 'Hearing now' : 'Selected tone',
                           style: TextStyle(fontWeight: FontWeight.w700, color: panelText),
                         ),
                         const Spacer(),
@@ -5478,6 +5665,9 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                             _lastDragHz = next;
                             _manualController.text = next.toStringAsFixed(1);
                           });
+                          if (_soundOn) {
+                            _service.updateContinuousTone(next);
+                          }
                         },
                         child: Text(
                           '${step > 0 ? '+' : ''}$step',
@@ -5495,10 +5685,14 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
                 onChanged: (text) {
                   final parsed = _tryParseNumber(text);
                   if (parsed != null) {
+                    final next = parsed.clamp(_minHz, _maxHz);
                     setState(() {
-                      _sliderHz = parsed.clamp(_minHz, _maxHz);
-                      _lastDragHz = _sliderHz;
+                      _sliderHz = next;
+                      _lastDragHz = next;
                     });
+                    if (_soundOn) {
+                      _service.updateContinuousTone(next);
+                    }
                   }
                 },
               ),
@@ -5532,6 +5726,11 @@ class _FrequencyCaptureSheetState extends State<_FrequencyCaptureSheet> {
 
   Future<void> _start() async {
     try {
+      // Silence the audition tone so it doesn't bleed into the recording.
+      if (_soundOn) {
+        setState(() => _soundOn = false);
+        await _service.stopContinuousTone();
+      }
       final hasPermission = await _service.hasPermission();
       if (!hasPermission) {
         if (mounted) {
@@ -5974,6 +6173,8 @@ class _CaneCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hardnessLabel = _hardnessChipLabelForSample(sample);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
@@ -6023,6 +6224,21 @@ class _CaneCard extends StatelessWidget {
             Text('Source: ${sample.source}'),
             Text('Size ${sample.lengthMm.toStringAsFixed(1)} × ${sample.widthMm.toStringAsFixed(1)} mm'),
             Text('ARE ${sample.ari?.toStringAsFixed(1) ?? 'n/a'} (${_ariStatus(sample.ari).label})'),
+            if (hardnessLabel != null) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: kBrandCane.withValues(alpha: 0.24),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: kSurfaceLine),
+                ),
+                child: Text(
+                  hardnessLabel,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
             if (sample.photoPaths.isNotEmpty) ...[
               const SizedBox(height: 6),
               _ThumbnailRow(paths: sample.photoPaths),
@@ -6145,6 +6361,7 @@ class _PendingReedCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final photos = sample.photoPaths;
+    final hardnessLabel = _hardnessChipLabelForSample(sample);
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
@@ -6181,6 +6398,21 @@ class _PendingReedCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text('Source: ${sample.source}'),
             Text('Size ${sample.lengthMm.toStringAsFixed(1)} × ${sample.widthMm.toStringAsFixed(1)} mm'),
+            if (hardnessLabel != null) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: kBrandCane.withValues(alpha: 0.24),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: kSurfaceLine),
+                ),
+                child: Text(
+                  hardnessLabel,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
             if (photos.isNotEmpty) ...[
               const SizedBox(height: 6),
               _ThumbnailRow(paths: photos),

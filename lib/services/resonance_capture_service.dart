@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:developer' as developer;
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:audioplayers/audioplayers.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:record/record.dart';
 
 class LiveCaptureFrame {
@@ -54,30 +52,40 @@ class ResonanceCaptureResult {
 }
 
 class ResonanceCaptureService {
-  ResonanceCaptureService({AudioRecorder? recorder, AudioPlayer? player})
-      : _recorder = recorder ?? AudioRecorder(),
-        _player = player ?? AudioPlayer();
+  ResonanceCaptureService({AudioRecorder? recorder})
+      : _recorder = recorder ?? AudioRecorder();
 
   final AudioRecorder _recorder;
-  final AudioPlayer _player;
+  final SoLoud _soloud = SoLoud.instance;
 
   static const int _liveSampleRate = 44100;
   static const int _analysisWindow = 4096;
   static const int _maxLiveSamples = _liveSampleRate * 8;
 
-  // Continuous audition tone: we generate a seamlessly-looping sine at the
-  // EXACT requested frequency and play it on loop. This guarantees the pitch
-  // you hear matches the displayed frequency (audioplayers' setPlaybackRate is
-  // unreliable for pitch on iOS, which previously caused mismatches).
-  static const int _toneSampleRate = 44100;
-  bool _continuousPlaying = false;
-  Future<void> _playbackSerial = Future<void>.value();
-  final Map<int, File> _toneFileCache = {};
-  int? _currentAuditionKey;
-  double? _pendingAuditionHz;
-  bool _isApplyingAudition = false;
-  bool _auditionActive = false;
-  int _auditionGeneration = 0;
+  // Real-time audition oscillator. A single sine waveform generator plays
+  // continuously; changing its frequency with [SoLoud.setWaveformFreq] bends
+  // the pitch live and phase-continuously — like pulling a slide whistle — at
+  // the EXACT frequency requested. No file playback, no pitch quantization and
+  // no gaps, so dragging the slider glides the tone without ever cutting out.
+  static const double _toneVolume = 0.6;
+  AudioSource? _oscillator;
+  SoundHandle? _toneHandle;
+  SoundHandle? _previewHandle;
+  bool _continuousActive = false;
+
+  /// Whether the continuous audition tone is currently toggled on.
+  bool get isContinuousToneActive => _continuousActive;
+
+  bool _validHz(double hz) => hz > 0 && !hz.isNaN && !hz.isInfinite;
+
+  /// Initializes the audio engine (once per process) and lazily creates the
+  /// shared sine oscillator used for both the continuous tone and previews.
+  Future<void> _ensureEngine() async {
+    if (!_soloud.isInitialized) {
+      await _soloud.init();
+    }
+    _oscillator ??= await _soloud.loadWaveform(WaveForm.sin, false, 1.0, 0.0);
+  }
 
   StreamSubscription<Uint8List>? _streamSubscription;
   StreamController<LiveCaptureFrame>? _frameController;
@@ -207,181 +215,120 @@ class ResonanceCaptureService {
     return result;
   }
 
-  /// Plays a short sine tone at [hz] so the operator can audit the chosen
-  /// frequency by ear.
+  /// Plays a short comparison tone at [hz] (for take/candidate previews). The
+  /// momentary tone takes over the shared oscillator, so any running continuous
+  /// audition tone is stopped first.
   Future<void> playTone(
     double hz, {
     Duration duration = const Duration(milliseconds: 1500),
   }) async {
-    if (hz <= 0 || hz.isNaN || hz.isInfinite) {
+    if (!_validHz(hz)) {
       return;
     }
+    await stopContinuousTone();
+    try {
+      await _ensureEngine();
+      final osc = _oscillator!;
+      _soloud.setWaveformFreq(osc, hz);
 
-    final tempDir = await getTemporaryDirectory();
-    final file = File('${tempDir.path}/audit_tone_${hz.toStringAsFixed(2)}.wav');
-    if (!await file.exists()) {
-      final bytes = _buildSineWav(hz, duration);
-      await file.writeAsBytes(bytes, flush: true);
-    }
+      final previous = _previewHandle;
+      if (previous != null && _soloud.getIsValidVoiceHandle(previous)) {
+        await _soloud.stop(previous);
+      }
 
-    _continuousPlaying = false;
-    try {
-      await _player.stop();
+      final handle = await _soloud.play(osc, volume: _toneVolume);
+      _previewHandle = handle;
+      _soloud.scheduleStop(handle, duration);
     } catch (error) {
       developer.log(
-        'Failed to stop player before short tone: $error',
-        name: 'ResonanceCaptureService',
-      );
-    }
-    try {
-      await _player.setReleaseMode(ReleaseMode.release);
-      await _player.setPlaybackRate(1.0);
-    } catch (error) {
-      developer.log(
-        'Failed to configure player for short tone: $error',
-        name: 'ResonanceCaptureService',
-      );
-    }
-    try {
-      await _player.play(DeviceFileSource(file.path));
-    } catch (error) {
-      developer.log(
-        'Failed to play short tone at ${hz.toStringAsFixed(1)} Hz: $error',
+        'Failed to play preview tone at ${hz.toStringAsFixed(1)} Hz: $error',
         name: 'ResonanceCaptureService',
       );
     }
   }
 
-  /// Starts (or retunes) a seamless looping sine tone at the EXACT [hz] so the
-  /// slider audition always matches the displayed frequency. Rapid updates are
-  /// coalesced so dragging stays responsive without audio cutting out.
-  Future<void> auditionToneHz(double hz) async {
-    if (hz <= 0 || hz.isNaN || hz.isInfinite) {
+  /// Turns the continuous audition tone on and starts the sine oscillator at
+  /// [hz]. Call [updateContinuousTone] while dragging to bend the pitch and
+  /// [stopContinuousTone] to turn it off.
+  Future<void> startContinuousTone(double hz) async {
+    if (!_validHz(hz)) {
       return;
     }
-    _auditionActive = true;
-    final generation = _auditionGeneration;
-    _pendingAuditionHz = hz;
-    if (_isApplyingAudition) {
-      return;
-    }
-
-    _isApplyingAudition = true;
+    _continuousActive = true;
     try {
-      while (_pendingAuditionHz != null && _auditionActive && generation == _auditionGeneration) {
-        final next = _pendingAuditionHz!;
-        _pendingAuditionHz = null;
-        await _applyAudition(next, generation);
+      await _ensureEngine();
+      final osc = _oscillator!;
+      _soloud.setWaveformFreq(osc, hz);
+
+      final handle = _toneHandle;
+      if (handle == null || !_soloud.getIsValidVoiceHandle(handle)) {
+        _toneHandle = await _soloud.play(osc, volume: _toneVolume);
       }
-    } finally {
-      _isApplyingAudition = false;
+    } catch (error) {
+      developer.log(
+        'Failed to start audition tone at ${hz.toStringAsFixed(1)} Hz: $error',
+        name: 'ResonanceCaptureService',
+      );
     }
   }
 
-  Future<void> _applyAudition(double hz, int generation) async {
-    if (!_auditionActive || generation != _auditionGeneration) {
+  /// Bends the running audition tone to the EXACT [hz] in real time. For a
+  /// waveform oscillator this is instantaneous and phase-continuous, so the
+  /// pitch glides smoothly with the slider and never cuts out. Does nothing if
+  /// the tone is toggled off.
+  Future<void> updateContinuousTone(double hz) async {
+    if (!_continuousActive || !_validHz(hz)) {
       return;
     }
-
-    final key = hz.round();
-    if (_currentAuditionKey == key && _continuousPlaying) {
+    final osc = _oscillator;
+    if (osc == null) {
       return;
     }
-
-    final File file;
     try {
-      file = await _ensureToneFile(key.toDouble());
+      _soloud.setWaveformFreq(osc, hz);
+      // If the voice was lost (e.g. an audio interruption), restart it.
+      final handle = _toneHandle;
+      if (handle == null || !_soloud.getIsValidVoiceHandle(handle)) {
+        _toneHandle = await _soloud.play(osc, volume: _toneVolume);
+      }
     } catch (error) {
       developer.log(
-        'Failed to prepare audition tone for $key Hz: $error',
+        'Failed to retune audition tone to ${hz.toStringAsFixed(1)} Hz: $error',
         name: 'ResonanceCaptureService',
       );
-      return;
-    }
-
-    if (!_auditionActive || generation != _auditionGeneration) {
-      return;
-    }
-
-    try {
-      if (!_continuousPlaying) {
-        await _player.setReleaseMode(ReleaseMode.loop);
-        await _player.setVolume(0.6);
-        await _player.setPlaybackRate(1.0);
-      }
-
-      if (!_auditionActive || generation != _auditionGeneration) {
-        return;
-      }
-
-      await _player.play(DeviceFileSource(file.path));
-
-      if (!_auditionActive || generation != _auditionGeneration) {
-        try {
-          await _player.stop();
-        } catch (_) {}
-        return;
-      }
-
-      _continuousPlaying = true;
-      _currentAuditionKey = key;
-    } catch (error) {
-      developer.log(
-        'Failed to play audition tone at $key Hz: $error',
-        name: 'ResonanceCaptureService',
-      );
-      _continuousPlaying = false;
-      _currentAuditionKey = null;
     }
   }
 
   Future<void> stopContinuousTone() async {
-    _auditionActive = false;
-    _auditionGeneration++;
-    _pendingAuditionHz = null;
-    await _serializePlayback(() async {
-      if (!_continuousPlaying) return;
-      _continuousPlaying = false;
-      _currentAuditionKey = null;
-      try {
-        await _player.setReleaseMode(ReleaseMode.release);
-        await _player.stop();
-      } catch (error) {
-        developer.log(
-          'Failed to stop continuous tone cleanly: $error',
-          name: 'ResonanceCaptureService',
-        );
+    _continuousActive = false;
+    final handle = _toneHandle;
+    _toneHandle = null;
+    if (handle == null) {
+      return;
+    }
+    try {
+      if (_soloud.getIsValidVoiceHandle(handle)) {
+        await _soloud.stop(handle);
       }
-    });
-  }
-
-  Future<File> _ensureToneFile(double hz) async {
-    final key = hz.round();
-    final cached = _toneFileCache[key];
-    if (cached != null && await cached.exists()) {
-      return cached;
-    }
-    final tempDir = await getTemporaryDirectory();
-    final file = File('${tempDir.path}/audit_loop_${key}hz.wav');
-    if (!await file.exists()) {
-      final bytes = _buildLoopableSineWav(
-        key.toDouble(),
-        const Duration(milliseconds: 400),
-        sampleRate: _toneSampleRate,
+    } catch (error) {
+      developer.log(
+        'Failed to stop continuous tone cleanly: $error',
+        name: 'ResonanceCaptureService',
       );
-      await file.writeAsBytes(bytes, flush: true);
     }
-    _toneFileCache[key] = file;
-    return file;
   }
 
   Future<void> stopPlayback() async {
-    _auditionActive = false;
-    _auditionGeneration++;
-    _continuousPlaying = false;
-    _pendingAuditionHz = null;
+    await stopContinuousTone();
+    final preview = _previewHandle;
+    _previewHandle = null;
+    if (preview == null) {
+      return;
+    }
     try {
-      await _player.stop();
+      if (_soloud.getIsValidVoiceHandle(preview)) {
+        await _soloud.stop(preview);
+      }
     } catch (error) {
       developer.log(
         'Failed to stop playback: $error',
@@ -392,7 +339,19 @@ class ResonanceCaptureService {
 
   Future<void> dispose() async {
     await _disposeStreaming();
-    await stopContinuousTone();
+    await stopPlayback();
+    final osc = _oscillator;
+    _oscillator = null;
+    if (osc != null) {
+      try {
+        await _soloud.disposeSource(osc);
+      } catch (error) {
+        developer.log(
+          'Failed to dispose oscillator: $error',
+          name: 'ResonanceCaptureService',
+        );
+      }
+    }
     try {
       await _recorder.dispose();
     } catch (error) {
@@ -401,21 +360,8 @@ class ResonanceCaptureService {
         name: 'ResonanceCaptureService',
       );
     }
-    try {
-      await _player.dispose();
-    } catch (error) {
-      developer.log(
-        'Failed to dispose player: $error',
-        name: 'ResonanceCaptureService',
-      );
-    }
-  }
-
-  Future<void> _serializePlayback(Future<void> Function() action) {
-    _playbackSerial = _playbackSerial
-        .catchError((_) {})
-        .then((_) => action());
-    return _playbackSerial;
+    // The SoLoud engine is a process-wide singleton reused by the next capture
+    // sheet, so it is intentionally not deinitialized here.
   }
 
   Future<void> _disposeStreaming() async {
@@ -438,101 +384,6 @@ class ResonanceCaptureService {
     if (_liveSamples.length > _maxLiveSamples) {
       _liveSamples.removeRange(0, _liveSamples.length - _maxLiveSamples);
     }
-  }
-
-  Uint8List _buildSineWav(double hz, Duration duration) {
-    const sampleRate = _toneSampleRate;
-    final totalSamples = (sampleRate * duration.inMilliseconds / 1000).round();
-    final attack = (sampleRate * 0.02).round();
-    final release = (sampleRate * 0.05).round();
-
-    final data = ByteData(totalSamples * 2);
-    for (int i = 0; i < totalSamples; i++) {
-      double envelope = 1;
-      if (i < attack) {
-        envelope = i / attack;
-      } else if (i > totalSamples - release) {
-        envelope = (totalSamples - i) / release;
-      }
-      final value = math.sin(2 * math.pi * hz * i / sampleRate) * 0.4 * envelope;
-      data.setInt16(i * 2, (value * 32767).round().clamp(-32768, 32767), Endian.little);
-    }
-
-    final dataBytes = data.buffer.asUint8List();
-    final byteRate = sampleRate * 2;
-    final header = ByteData(44);
-    header.setUint8(0, 0x52); header.setUint8(1, 0x49);
-    header.setUint8(2, 0x46); header.setUint8(3, 0x46); // 'RIFF'
-    header.setUint32(4, 36 + dataBytes.length, Endian.little);
-    header.setUint8(8, 0x57); header.setUint8(9, 0x41);
-    header.setUint8(10, 0x56); header.setUint8(11, 0x45); // 'WAVE'
-    header.setUint8(12, 0x66); header.setUint8(13, 0x6d);
-    header.setUint8(14, 0x74); header.setUint8(15, 0x20); // 'fmt '
-    header.setUint32(16, 16, Endian.little);
-    header.setUint16(20, 1, Endian.little); // PCM
-    header.setUint16(22, 1, Endian.little); // channels
-    header.setUint32(24, sampleRate, Endian.little);
-    header.setUint32(28, byteRate, Endian.little);
-    header.setUint16(32, 2, Endian.little); // block align
-    header.setUint16(34, 16, Endian.little); // bits per sample
-    header.setUint8(36, 0x64); header.setUint8(37, 0x61);
-    header.setUint8(38, 0x74); header.setUint8(39, 0x61); // 'data'
-    header.setUint32(40, dataBytes.length, Endian.little);
-
-    return Uint8List.fromList([
-      ...header.buffer.asUint8List(),
-      ...dataBytes,
-    ]);
-  }
-
-  /// Builds a click-free, seamlessly-loopable sine WAV. The duration is
-  /// rounded so the buffer contains an integer number of cycles at [hz] and
-  /// [sampleRate], placing the loop point at a zero-crossing.
-  Uint8List _buildLoopableSineWav(
-    double hz,
-    Duration duration, {
-    required int sampleRate,
-  }) {
-    final samplesPerCycle = sampleRate / hz;
-    final approxSamples = (sampleRate * duration.inMilliseconds / 1000).round();
-    final cycles = math.max(1, (approxSamples / samplesPerCycle).round());
-    final totalSamples = (cycles * samplesPerCycle).round();
-
-    final data = ByteData(totalSamples * 2);
-    for (int i = 0; i < totalSamples; i++) {
-      final value = math.sin(2 * math.pi * hz * i / sampleRate) * 0.4;
-      data.setInt16(
-        i * 2,
-        (value * 32767).round().clamp(-32768, 32767),
-        Endian.little,
-      );
-    }
-
-    final dataBytes = data.buffer.asUint8List();
-    final byteRate = sampleRate * 2;
-    final header = ByteData(44);
-    header.setUint8(0, 0x52); header.setUint8(1, 0x49);
-    header.setUint8(2, 0x46); header.setUint8(3, 0x46); // 'RIFF'
-    header.setUint32(4, 36 + dataBytes.length, Endian.little);
-    header.setUint8(8, 0x57); header.setUint8(9, 0x41);
-    header.setUint8(10, 0x56); header.setUint8(11, 0x45); // 'WAVE'
-    header.setUint8(12, 0x66); header.setUint8(13, 0x6d);
-    header.setUint8(14, 0x74); header.setUint8(15, 0x20); // 'fmt '
-    header.setUint32(16, 16, Endian.little);
-    header.setUint16(20, 1, Endian.little); // PCM
-    header.setUint16(22, 1, Endian.little); // channels
-    header.setUint32(24, sampleRate, Endian.little);
-    header.setUint32(28, byteRate, Endian.little);
-    header.setUint16(32, 2, Endian.little); // block align
-    header.setUint16(34, 16, Endian.little); // bits per sample
-    header.setUint8(36, 0x64); header.setUint8(37, 0x61);
-    header.setUint8(38, 0x74); header.setUint8(39, 0x61); // 'data'
-    header.setUint32(40, dataBytes.length, Endian.little);
-
-    return Uint8List.fromList([
-      ...header.buffer.asUint8List(),
-      ...dataBytes,
-    ]);
   }
 
   _PitchEstimate? _estimateFundamental(

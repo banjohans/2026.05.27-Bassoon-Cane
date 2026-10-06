@@ -19,6 +19,7 @@ class CaneSample {
     this.submergedLengthMm,
     this.density,
     this.hardness,
+    this.hardnessReadings = const [],
     this.notes = '',
     this.photoPaths = const [],
     this.resonanceTakesHz = const [],
@@ -41,6 +42,7 @@ class CaneSample {
   final double? submergedLengthMm;
   final double? density;
   final double? hardness;
+  final List<double> hardnessReadings;
   final String notes;
   final List<String> photoPaths;
   final List<double> resonanceTakesHz;
@@ -61,6 +63,7 @@ class CaneSample {
     double? submergedLengthMm,
     double? density,
     double? hardness,
+    List<double>? hardnessReadings,
     String? notes,
     List<String>? photoPaths,
     List<double>? resonanceTakesHz,
@@ -83,6 +86,7 @@ class CaneSample {
       submergedLengthMm: submergedLengthMm ?? this.submergedLengthMm,
       density: density ?? this.density,
       hardness: hardness ?? this.hardness,
+      hardnessReadings: hardnessReadings ?? this.hardnessReadings,
       notes: notes ?? this.notes,
       photoPaths: photoPaths ?? this.photoPaths,
       resonanceTakesHz: resonanceTakesHz ?? this.resonanceTakesHz,
@@ -178,6 +182,7 @@ class CaneSample {
       'submergedLengthMm': submergedLengthMm,
       'density': density,
       'hardness': hardness,
+      'hardnessReadings': hardnessReadings,
       'notes': notes,
       'photoPaths': photoPaths,
       'resonanceTakesHz': resonanceTakesHz,
@@ -208,7 +213,11 @@ class CaneSample {
       naturalFrequencyHz: (json['naturalFrequencyHz'] as num?)?.toDouble() ?? 0,
       submergedLengthMm: (json['submergedLengthMm'] as num?)?.toDouble(),
       density: (json['density'] as num?)?.toDouble(),
-      hardness: (json['hardness'] as num?)?.toDouble(),
+      hardnessReadings: (json['hardnessReadings'] as List<dynamic>? ?? const [])
+          .map((item) => (item as num).toDouble())
+          .where((value) => value > 0)
+          .toList(),
+      hardness: _resolveHardnessValue(json),
       notes: json['notes'] as String? ?? '',
       photoPaths: (json['photoPaths'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
@@ -217,6 +226,17 @@ class CaneSample {
           .map((item) => (item as num).toDouble())
           .toList(),
     );
+  }
+
+  static double? _resolveHardnessValue(Map<String, dynamic> json) {
+    final readings = (json['hardnessReadings'] as List<dynamic>? ?? const [])
+        .map((item) => (item as num).toDouble())
+        .where((value) => value > 0)
+        .toList();
+    if (readings.isNotEmpty) {
+      return readings.reduce((a, b) => a + b) / readings.length;
+    }
+    return (json['hardness'] as num?)?.toDouble();
   }
 }
 
